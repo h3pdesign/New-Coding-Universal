@@ -1,0 +1,24 @@
+Option Explicit
+ 
+Sub ZeilenLoeschen_Schnell()
+  Dim LastRow As Long, Zeile As Long
+  Dim rngData As Range
+	 
+  LastRow = .Cells(Rows.Count, 34).End(xlUp).Row
+  With ActiveSheet
+    For Zeile = LastRow To 11 Step -1
+      If UCase(.Cells(Zeile, 3)) = "B" Then
+        If rngData Is Nothing Then
+          Set rngData = .Rows(Zeile)
+        Else
+          Set rngData = Union(rngData, .Rows(Zeile))
+        End If
+      End If
+    Next Zeile
+  End With
+  
+  If Not rngData Is Nothing Then
+    rngData.Rows.Delete
+    Set rngData = Nothing
+  End If
+End Sub

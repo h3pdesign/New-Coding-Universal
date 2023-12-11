@@ -1,0 +1,8 @@
+If(
+Not(varProjectStatus = varNewProjStatus),
+Patch(‘Change Log’,Defaults(‘Change Log’),{Title:”Status was changed to ” & varNewProjStatus});
+Office365.SendEmail(
+lblProjectMgr.Text,
+lblProjectName.Text & ” status was changed”,
+“Please go look at your project”,{Importance:”High”})
+)
