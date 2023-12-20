@@ -1,8 +1,3 @@
-LastName;FirstName;SAMAccountName;UserPrincipalname;UserName;DisplayName;Description;EmailAddress;Department;Company;PostalCode;City;Street;OUPath;CreateMailbox;ActivateActiveSync
-Doe;John;John.Doe;;John.Doe;Doe, John;none;;Sales;Contoso;12345;Nowhere;Paradise Street;;1,1
-Doe;Jane;;;;;;;;;;;;;;
-
-;LastName 		required	last name of the user
-;FirstName 		required	first name of the user
-;OUPath 		optional	Specifies the OU or container where the new object is created
-;CreateMailbox	optional	Creates Mailbox in Exchange on premise if the value 1
+version https://git-lfs.github.com/spec/v1
+oid sha256:cb561f43a245d123b66e076aefb685c42a988d0d87b746482a7b69fba9d467eb
+size 543
