@@ -1,0 +1,1 @@
+https://files.pythonhosted.org/packages/22/51/7cbc528e8da741e1e7056f04b7e580f3962f12bfbdc99ef6de02c8730c63/coronavirus-1.1.0-py3-none-any.whl

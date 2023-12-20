@@ -1,0 +1,8 @@
+$schema: https://azuremlschemas.azureedge.net/latest/workspace.schema.json
+name: <azure_ml_orkspace>
+location: <West Europe>
+display_name: Azure-ML-Workspace
+description: ML Workspace for Azure
+tags:
+  purpose: testing
+  team: ml_testing_h3p

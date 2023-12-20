@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+
+read pct name < <(top -l 2 -n 1 -F -o cpu -stats cpu,command | tail -1)
+if (( ${pct%.*} >= 50 )); then
+  /Applications/terminal-notifier.app/Contents/MacOS/terminal-notifier \
+    -message "Process > 50%: $name ($pct%)"
+fi
