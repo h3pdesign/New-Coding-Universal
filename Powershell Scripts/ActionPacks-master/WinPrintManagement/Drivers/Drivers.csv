@@ -1,4 +1,3 @@
-﻿DriverName;ComputerName;InfFilePath
-Brother PS Class Driver;Computer3000;
-Canon Inkjet 0253 Class Driver;Computer3000;"C:\Windows\Inf\canon0253.inf"
-Microsoft Print To Pdf;Computer3000;
+version https://git-lfs.github.com/spec/v1
+oid sha256:acfa28c343411968800e5ea0dbc505576ae3fcdc303df1a0462fc35217fe433d
+size 188

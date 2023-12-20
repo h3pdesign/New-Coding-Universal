@@ -1,8 +1,3 @@
-UserName;DisplayName;LastName;FirstName;MailNickName;PostalCode;City;Street;PhoneNumber;MobilePhone;Department;Enabled;MemberType;LicenseSkuIds
-John.Doe;Doe, John;Doe;John;;12345;Nowhere;Paradise Street;no phone;mobile;Sales;1;Member;
-Jane.Doe;Doe, Jane;Doe;Jane;;;;;;;;0;Guest;
-;UserName 		required	unique account name of the user 
-;DisplayName 	required	unique display name of the user
-;Enabled 		optional	0 (disable) or 1 (enable) default is enable
-;MemberType 	optional	Guest or Member	default is Member
-;LicenseSkuIds	optional	List of license SkuIDs for the user, comma separated
+version https://git-lfs.github.com/spec/v1
+oid sha256:93ac6a0ff9fe19a6c7d19f737ce846fe6e08aaf8961a5b5dec49397339b831f8
+size 584
