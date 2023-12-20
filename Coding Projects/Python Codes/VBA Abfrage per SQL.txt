@@ -1,0 +1,37 @@
+Option Compare Database
+Option Explicit
+
+Private Sub Befehl6_Click()
+
+    DoCmd.Close acForm, Me.Name
+    
+End Sub
+
+Private Sub GeschlechtAW_AfterUpdate()
+
+    MaAW = Null
+    
+End Sub
+
+Private Sub MaAW_Enter()
+
+On Error GoTo fehler
+
+Dim SqlStr As String
+
+    SqlStr = "SELECT MaNam FROM Mitarbeiter "
+    Select Case GeschlechtAW
+        Case "männlich", "weiblich"
+            SqlStr = SqlStr & "WHERE MaGeschl='" & GeschlechtAW & "' "
+        Case "Alle", Null, "" ' dieser Zweig ist nicht nötig und dient nur der besseren Lesbarkeit
+            SqlStr = SqlStr & ""
+    End Select
+    MaAW.RowSource = SqlStr & "ORDER BY MaNam;"
+    
+ende:
+    Exit Sub
+    
+fehler:
+    Resume ende
+
+End Sub

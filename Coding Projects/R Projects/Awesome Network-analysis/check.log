@@ -1,0 +1,36 @@
+2017-03-14 09:04:07 : checking 11 URLs
+
+http://asonam.cpsc.ucalgary.ca/    
+Status code: 400 
+
+http://comnet.oxfordjournals.org/    
+Failed to access
+
+http://comnet.oxfordjournals.org/content/4/3/457.short    
+Failed to access
+
+http://netzwerkerei.org/    
+Status code: 403 
+
+http://nexus.igraph.org/    
+Failed to access
+
+http://www.clementlevallois.net/gephi.html    
+Status code: 404 
+
+http://www.cmh.pro.ens.fr/reseaux-sociaux/    
+Failed to access
+
+http://www.derekruths.com/    
+Status code: 403 
+
+http://www.esri.com/software/arcgis/extensions/networkanalyst    
+Status code: 403 
+
+http://www.melissaclarkson.com/resources/R_guides/    
+Status code: 500 
+
+http://www.nature.com/nature/journal/v445/n7127/full/445489a.html    
+Status code: 401 
+
+2017-03-14 09:08:15 : done.

@@ -1,0 +1,74 @@
+{
+    “
+    $schema”: “https: //developer.microsoft.com/en-us/json-schemas/sp/column-formatting.schema.json&#8221;,
+        “elmType”: “span”,
+    “style”: {
+        “
+        color”: “#0078d7”
+
+},
+
+“children”: [
+
+{
+
+“elmType”: “span”,
+
+“attributes”: {
+
+“iconName”: “Flow”
+
+}
+
+},
+
+{
+
+“elmType”: “button”,
+
+“style”: {
+
+
+{
+    “
+    elmType”: “button”,
+    “txtContent”: “Get Approved”,
+    “customRowAction”: {
+        “
+        action”: “executeFlow”,
+        “actionParams”: “{
+            \”
+            id\”: \”86 dfdf10 - 8 d99 - 4914 - 8e98 - fe4b21ed7e34\”
+        }”
+    },
+    “style”: {
+        “
+        background - color”: “purple“,
+        “color”: “white”
+    }
+}
+
+“border”: “none”,
+
+“background-color”: “transparent”,
+
+“color”: “# 0078 d7”,
+        “cursor”: “pointer”
+    },
+    “txtContent”: {
+        “
+        operator”: “+”,
+        “operands”: [“
+            [$Policy_x0020_Owner.title]”, “Approval”
+        ]
+    },
+    “customRowAction”: {
+        “
+        action”: “executeFlow”,
+        “actionParams”: “{
+            \”
+            id\”: \”86 dfdf10 - 8 d99 - 4914 - 8e98 - fe4b21ed7e34\”
+        }”
+    }
+}]
+}
