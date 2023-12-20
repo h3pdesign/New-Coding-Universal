@@ -1,5 +1,0 @@
-{
-    "subscription_id": "{{cookiecutter.subscription_id}}",
-    "resource_group": "{{cookiecutter.resource_group}}",
-    "workspace_name": "{{cookiecutter.workspace_name}}"
-}
