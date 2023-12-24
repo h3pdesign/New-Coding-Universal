@@ -1,72 +1,40 @@
 import requests
-import json
-import re
 
-# Replace the following variables with your own Pocket API credentials
-consumer_key = "your_consumer_key"
-access_token = "your_access_token"
+# Replace with your Pocket API consumer key and access token
+CONSUMER_KEY = "105963-2f8fe9284c7d69f5fc0ee69"
+ACCESS_TOKEN = "YOUR_ACCESS_TOKEN"
 
-# Get all items from the account
-get_url = "https://getpocket.com/v3/get"
-get_params = {
-    "consumer_key": consumer_key,
-    "access_token": access_token,
-    "state": "all",
-    "detailType": "complete",
+# Pocket API URLs
+RETRIEVE_URL = "https://getpocket.com/v3/get"
+MODIFY_URL = "https://getpocket.com/v3/send"
+
+# Retrieve all items from the user's Pocket list
+params = {
+    "consumer_key": CONSUMER_KEY,
+    "access_token": ACCESS_TOKEN,
+    "detailType": "simple",
 }
-response = requests.post(get_url, json=get_params)
-items = json.loads(response.text)["list"]
+response = requests.post(RETRIEVE_URL, params=params)
+data = response.json()
 
-# Add tags to each item
-for item_id in items:
-    item = items[item_id]
-    title = item["resolved_title"]
-    tags = set(re.findall(r"\b\w+\b", title)) - {
-        "a",
-        "an",
-        "the",
-        "and",
-        "or",
-        "not",
-        "for",
-        "in",
-        "on",
-        "at",
-        "to",
-        "of",
-        "with",
-        "by",
-        "from",
-        "is",
-        "are",
-        "was",
-        "were",
-        "this",
-        "that",
-        "these",
-        "those",
-        "my",
-        "your",
-        "his",
-        "her",
-        "its",
-        "our",
-        "their",
-        "i",
-        "you",
-        "he",
-        "she",
-        "it",
-        "we",
-        "they",
-    }
-    tags = list(tags)[:6]
-    item_url = "https://getpocket.com/v3/send"
-    item_params = {
-        "consumer_key": consumer_key,
-        "access_token": access_token,
-        "actions": [{"action": "tags_add", "item_id": item_id, "tags": ",".join(tags)}],
-    }
-    response = requests.post(item_url, json=item_params)
+# Iterate over each item in the user's Pocket list
+for item_id, item in data["list"].items():
+    # Define the tags you want to add
+    tags = ["tag1", "tag2", "tag3"]
 
-print("All items have been tagged with generated tags")
+    # Prepare the data for the modify request
+    actions = [{"action": "tags_add", "item_id": item_id, "tags": ",".join(tags)}]
+    params = {
+        "consumer_key": CONSUMER_KEY,
+        "access_token": ACCESS_TOKEN,
+        "actions": actions,
+    }
+
+    # Send the modify request to add the tags
+    response = requests.post(MODIFY_URL, params=params)
+
+    # Check if the request was successful
+    if response.status_code == 200:
+        print(f"Successfully added tags to item {item_id}")
+    else:
+        print(f"Failed to add tags to item {item_id}")
