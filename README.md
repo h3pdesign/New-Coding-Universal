@@ -1,3 +1,3 @@
 # New-Coding-Universal
-General coding and Snippets Project Files
-Experimental Codinf ans analysis
+General coding and dsnippets project files
+Experimental coding and analysis
