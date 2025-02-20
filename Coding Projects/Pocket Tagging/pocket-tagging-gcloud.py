@@ -2,8 +2,8 @@ from pocket_tagger import PocketTagger
 
 tagger = PocketTagger(
     gcloud_credentials_file="/Users/h3p/pocket-tagging-2588febe36bc.json",
-    consumer_key="db3d33cc63e9b9b4b028856",
-    access_token="your-access-token",
+    consumer_key="113137-db3d33cc63e9b9b4b028856",
+    access_token="a044bef6-695d-c21d-3111-f6b3a6",
 )
 
 
@@ -12,8 +12,8 @@ tagger = PocketTagger(
 # Initialize PocketTagger with GCloud and Pocket API Credentials
 tagger = PocketTagger(
     gcloud_credentials_file="gcloud_credentials_file.json",
-    consumer_key="db3d33cc63e9b9b4b028856",
-    access_token="pocket-access-token",
+    consumer_key="113137-db3d33cc63e9b9b4b028856",
+    access_token="a044bef6-695d-c21d-3111-f6b3a6",
 )
 
 # Check https://getpocket.com/developer/docs/v3/retrieve for additional list of options you can pass for retrieving pocket list
