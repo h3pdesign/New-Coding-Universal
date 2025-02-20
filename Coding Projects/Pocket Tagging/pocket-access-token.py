@@ -1,44 +1,47 @@
-import requests
+import os
+from pocket import Pocket
+from dotenv import load_dotenv
 
-# Replace with your actual consumer key from Pocket's developer portal
-CONSUMER_KEY = "113137-db3d33cc63e9b9b4b028856"
+# Load environment variables from .env file (if it exists, optional here)
+load_dotenv()
+
+# Pocket consumer key (replace with yours or load from .env)
+POCKET_CONSUMER_KEY = os.getenv("POCKET_CONSUMER_KEY") or "your_consumer_key_here"
 REDIRECT_URI = "http://localhost"  # Placeholder for desktop apps
 
 
 def get_access_token():
-    # Step 1: Get a request token
-    request_url = "https://getpocket.com/v3/oauth/request"
-    payload = {"consumer_key": CONSUMER_KEY, "redirect_uri": REDIRECT_URI}
-    headers = {"Content-Type": "application/json"}
+    # Initialize Pocket with consumer key only for auth flow
+    pocket = Pocket(consumer_key=POCKET_CONSUMER_KEY)
 
     try:
-        response = requests.post(request_url, json=payload, headers=headers)
-        response.raise_for_status()
-        request_token = response.text.split("code=")[1]
+        # Step 1: Get a request token
+        request_token = pocket.get_request_token(redirect_uri=REDIRECT_URI)
         print(f"Request token: {request_token}")
 
         # Step 2: Generate the authorization URL
-        auth_url = f"https://getpocket.com/auth/authorize?request_token={request_token}&redirect_uri={REDIRECT_URI}"
+        auth_url = pocket.get_auth_url(code=request_token)
         print(f"Please visit this URL to authorize the app: {auth_url}")
+        print("Log in to Pocket, authorize the app, then press Enter here...")
 
-        # Wait for user to authorize
-        print("After authorizing, press Enter to continue...")
+        # Wait for user to authorize in browser
         input()
 
         # Step 3: Convert request token to access token
-        access_url = "https://getpocket.com/v3/oauth/authorize"
-        payload = {"consumer_key": CONSUMER_KEY, "code": request_token}
-        response = requests.post(access_url, json=payload, headers=headers)
-        response.raise_for_status()
-        access_token = response.text.split("access_token=")[1].split("&")[0]
-        print(f"Your access token is: {access_token}")
-        print("Save this token and use it in your pocket-tagging-grok.py script!")
+        access_token = pocket.get_access_token(request_token)
+        print(f"Your new access token is: {access_token}")
+        print(f"Update your .env file with: POCKET_ACCESS_TOKEN={access_token}")
         return access_token
 
-    except requests.exceptions.RequestException as e:
-        print(f"Error during authentication: {e}")
+    except Exception as e:
+        print(f"Error during authentication: {str(e)}")
         return None
 
 
 if __name__ == "__main__":
-    access_token = get_access_token()
+    # Ensure consumer key is set
+    if not POCKET_CONSUMER_KEY or "your_consumer_key_here" in POCKET_CONSUMER_KEY:
+        print("Please set POCKET_CONSUMER_KEY in .env or replace it in the code.")
+        print("Get it from https://getpocket.com/developer/apps/")
+    else:
+        get_access_token()
