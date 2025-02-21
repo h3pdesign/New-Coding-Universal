@@ -19,21 +19,33 @@ GROK_API_URL = "https://api.x.ai/v1/chat/completions"
 if not all([POCKET_CONSUMER_KEY, POCKET_ACCESS_TOKEN, GROK_API_KEY]):
     raise ValueError("Missing required environment variables. Check your .env file.")
 
-# Initialize Pocket client (for fetching only)
+# Initialize Pocket client
 pocket = Pocket(consumer_key=POCKET_CONSUMER_KEY, access_token=POCKET_ACCESS_TOKEN)
 
 
 # Function to test Pocket API connectivity
 def test_pocket_connection():
-    try:
-        response = pocket.get(count=1)
-        print(f"Raw test response: {response}")
-        articles = response[0].get("list", {})
-        print(f"Test fetch successful: Retrieved {len(articles)} article(s)")
-        return True
-    except Exception as e:
-        print(f"Test fetch failed: {str(e)}")
-        return False
+    retries = 5
+    for attempt in range(retries):
+        try:
+            response = pocket.get(count=1)
+            if "error" in response[0]:
+                raise ValueError(f"Pocket API error: {response[0]['error']}")
+            articles = response[0].get("list", {})
+            print(f"Test fetch successful: Retrieved {len(articles)} article(s)")
+            return True
+        except Exception as e:
+            print(f"Test fetch failed on attempt {attempt + 1}/{retries}: {str(e)}")
+            if hasattr(e, "response") and e.response:
+                print(f"Response status: {e.response.status_code}")
+                print(f"Response details: {e.response.text}")
+            if attempt < retries - 1:
+                delay = 30
+                print(f"Retrying in {delay} seconds...")
+                time.sleep(delay)
+            else:
+                print("All retries failed. Pocket API may be down or token invalid.")
+                return False
 
 
 # Function to clean tags
@@ -104,47 +116,53 @@ def get_tags_from_grok(content_or_title):
             return ["to_tag_later"]
 
 
-# Function to fetch untagged Pocket articles
-def fetch_pocket_articles():
+# Function to fetch a batch of 1000 untagged Pocket articles in smaller sub-batches
+def fetch_pocket_articles(offset=0, total_batch_size=1000, sub_batch_size=100):
     all_articles = {}
-    offset = 0
-    count = 100
-    retries = 3
+    articles_fetched = 0
+    sub_offset = offset
 
-    while True:
+    while articles_fetched < total_batch_size:
+        remaining = total_batch_size - articles_fetched
+        current_batch = min(sub_batch_size, remaining)
+        retries = 3
         for attempt in range(retries):
             try:
                 print(
-                    f"Fetching articles: count={count}, offset={offset}, attempt={attempt+1}"
+                    f"Fetching {current_batch} untagged articles at offset {sub_offset}, attempt {attempt + 1}/{retries}"
                 )
-                response = pocket.get(count=count, offset=offset, tag="_untagged_")
-                # print(f"Raw response: {response}")
+                response = pocket.get(
+                    count=current_batch, offset=sub_offset, tag="_untagged_"
+                )
+                if "error" in response[0]:
+                    raise ValueError(f"Pocket API error: {response[0]['error']}")
                 articles = response[0].get("list", {})
                 all_articles.update(articles)
-
-                if len(articles) < count:
-                    print(f"Reached end of untagged articles at {len(all_articles)}")
+                articles_fetched += len(articles)
+                print(f"Fetched {articles_fetched} untagged articles so far")
+                sub_offset += current_batch
+                if (
+                    len(articles) < current_batch
+                ):  # Fewer than requested, likely end of untagged
+                    print(f"Reached end of untagged articles at {articles_fetched}")
                     return all_articles
-
-                offset += count
-                print(f"Fetched {len(all_articles)} articles so far...")
-                time.sleep(1)
                 break
-
             except Exception as e:
                 print(f"Error fetching Pocket articles: {str(e)}")
                 if hasattr(e, "response") and e.response:
-                    status = e.response.status_code
-                    print(f"Response status: {status}")
+                    print(f"Response status: {e.response.status_code}")
                     print(f"Response details: {e.response.text}")
-                    if status == 413:
-                        count = max(10, count // 2)
-                        time.sleep(5)
-                        continue
                 if attempt < retries - 1:
-                    time.sleep(5)
+                    delay = 5
+                    print(f"Retrying in {delay} seconds...")
+                    time.sleep(delay)
                 else:
+                    print("All retries failed for this sub-batch.")
                     return None
+        if articles_fetched >= total_batch_size:
+            break
+
+    return all_articles
 
 
 # Function to tag articles in Pocket using raw API
@@ -161,30 +179,26 @@ def tag_pocket_articles(article_tags_dict):
     if actions:
         print(f"Preparing to tag {len(actions)} articles.")
         print("Sample action:", actions[0])
-        try:
-            url = "https://getpocket.com/v3/send"
-            headers = {"Content-Type": "application/json"}
-            payload = {
-                "consumer_key": POCKET_CONSUMER_KEY,
-                "access_token": POCKET_ACCESS_TOKEN,
-                "actions": actions,
-            }
-            chunk_size = 9999
-            for i in range(0, len(actions), chunk_size):
-                chunk = actions[i : i + chunk_size]
-                print(f"Sending chunk {i // chunk_size + 1} with {len(chunk)} actions")
+        url = "https://getpocket.com/v3/send"
+        headers = {"Content-Type": "application/json"}
+        payload = {
+            "consumer_key": POCKET_CONSUMER_KEY,
+            "access_token": POCKET_ACCESS_TOKEN,
+            "actions": actions,
+        }
+        retries = 3
+        for attempt in range(retries):
+            try:
                 response = requests.post(
-                    url, data=json.dumps(payload), headers=headers, timeout=10
+                    url, data=json.dumps(payload), headers=headers, timeout=30
                 )
                 response.raise_for_status()
-                print(
-                    f"Tagged {len(chunk)} articles in bulk (chunk {i // chunk_size + 1})"
-                )
+                print(f"Tagged {len(actions)} articles in bulk")
                 print(f"Response: {response.json()}")
 
-                # Verify the first article in this chunk
-                sample_id = chunk[0]["item_id"]
-                sample_tags = chunk[0]["tags"].split(",")
+                # Verify the first article
+                sample_id = actions[0]["item_id"]
+                sample_tags = actions[0]["tags"].split(",")
                 verify_response = pocket.get(item_id=sample_id)
                 tagged_article = verify_response[0]["list"].get(sample_id, {})
                 applied_tags = list(tagged_article.get("tags", {}).keys())
@@ -197,28 +211,42 @@ def tag_pocket_articles(article_tags_dict):
                     print("Success: Tags verified as applied correctly")
                 else:
                     print("Warning: Tags not applied as expected")
-                time.sleep(1)
-        except requests.exceptions.HTTPError as e:
-            print(f"Error bulk tagging: {e}")
-            print(f"Response status: {e.response.status_code}")
-            print(f"Response details: {e.response.text}")
-            raise
-        except requests.exceptions.RequestException as e:
-            print(f"Request error: {e}")
-            raise
+                break
+            except requests.exceptions.ReadTimeout as e:
+                print(f"Timeout error on attempt {attempt + 1}/{retries}: {e}")
+                if attempt < retries - 1:
+                    print("Retrying in 10 seconds...")
+                    time.sleep(10)
+                else:
+                    print("Max retries reached")
+                    raise
+            except requests.exceptions.HTTPError as e:
+                print(f"Error bulk tagging: {e}")
+                print(f"Response status: {e.response.status_code}")
+                print(f"Response details: {e.response.text}")
+                raise
+            except requests.exceptions.RequestException as e:
+                print(f"Request error: {e}")
+                raise
 
 
-# Main execution
+# Main execution for 1000 articles
 def main():
     if not test_pocket_connection():
         print(
-            "Cannot proceed due to connection failure. Check credentials and try again."
+            "Cannot proceed due to connection failure. Check credentials or Pocket API status."
         )
         return
 
-    articles = fetch_pocket_articles()
+    # Set offset for this run (adjust manually for each run)
+    OFFSET = 0  # Start at 0, then 1000, 2000, etc.
+    articles = fetch_pocket_articles(
+        offset=OFFSET, total_batch_size=1000, sub_batch_size=100
+    )
     if articles is not None:
-        print(f"Found {len(articles)} untagged articles in your Pocket account.")
+        print(
+            f"Found {len(articles)} untagged articles in your Pocket account for offset {OFFSET}."
+        )
         article_tags = {}
         for item_id, article in articles.items():
             title = article.get(
@@ -233,6 +261,9 @@ def main():
                 print(f"No tags generated for '{title}'")
         if article_tags:
             tag_pocket_articles(article_tags)
+        print(
+            f"Completed tagging batch at offset {OFFSET}. Next offset: {OFFSET + 1000}"
+        )
     else:
         print("Failed to fetch articles. Check the error message above for details.")
 
