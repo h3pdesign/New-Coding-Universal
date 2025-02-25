@@ -5,6 +5,9 @@ import re
 from pocket import Pocket
 from dotenv import load_dotenv
 
+# Debugging: Confirm script starts
+print("Script is loading...")
+
 # Load environment variables from .env file
 load_dotenv()
 
@@ -15,11 +18,15 @@ GROK_API_KEY = os.getenv("GROK_API_KEY")
 GROK_API_URL = "https://api.x.ai/v1/chat/completions"
 
 # Validate environment variables
+print("Checking environment variables...")
 if not all([POCKET_CONSUMER_KEY, POCKET_ACCESS_TOKEN, GROK_API_KEY]):
     raise ValueError("Missing required environment variables. Check your .env file.")
+print("Environment variables loaded successfully.")
 
 # Initialize Pocket client
+print("Initializing Pocket client...")
 pocket = Pocket(consumer_key=POCKET_CONSUMER_KEY, access_token=POCKET_ACCESS_TOKEN)
+print("Pocket client initialized.")
 
 
 def test_pocket_connection():
@@ -37,12 +44,13 @@ def test_pocket_connection():
 
 def clean_tags(tags):
     """Clean tags by removing unwanted characters."""
+    print(f"Cleaning tags: {tags}")
     cleaned = []
     for tag in tags:
-        # Fixed regex: Remove *, newlines, digits, periods, and whitespace
         cleaned_tag = re.sub(r"[*\n\d.\s]+", "", tag).strip()
         if cleaned_tag:
             cleaned.append(cleaned_tag)
+    print(f"Cleaned tags: {cleaned}")
     return cleaned
 
 
@@ -118,7 +126,7 @@ def fetch_pocket_articles(max_articles=500):
         for attempt in range(retries):
             try:
                 remaining = target - len(all_articles)
-                fetch_count = min(count, remaining)  # Adjust count to not exceed target
+                fetch_count = min(count, remaining)
                 print(
                     f"Fetching: count={fetch_count}, offset={offset}, attempt={attempt + 1}"
                 )
@@ -150,6 +158,7 @@ def fetch_pocket_articles(max_articles=500):
 
 def tag_pocket_articles(article_tags_dict):
     """Tag articles in Pocket with debug output."""
+    print("Entering tag_pocket_articles...")
     if not article_tags_dict:
         print("No articles to tag.")
         return
@@ -169,8 +178,10 @@ def tag_pocket_articles(article_tags_dict):
         for i in range(0, len(actions), chunk_size):
             chunk = actions[i : i + chunk_size]
             print(f"Sending chunk {i // chunk_size + 1} with {len(chunk)} actions")
-            response = pocket.send(actions=chunk)  # Use send instead of commit
-            print(f"Tagged {len(chunk)} articles in chunk {i // chunk_size + 1}")
+            response = pocket.send(actions=chunk)  # Fixed to use send
+            print(
+                f"Tagged {len(chunk)} articles in chunk {i // chunk_size + 1}. Response: {response}"
+            )
             time.sleep(1)  # Delay between chunks
     except Exception as e:
         print(f"Error bulk tagging: {str(e)}")
@@ -182,7 +193,7 @@ def tag_pocket_articles(article_tags_dict):
 
 def main():
     """Main execution logic for tagging 500 articles."""
-    print("Script started")
+    print("Starting main execution...")
     if not test_pocket_connection():
         print(
             "Cannot proceed due to Pocket connection failure. Check credentials and try again."
@@ -212,4 +223,5 @@ def main():
 
 
 if __name__ == "__main__":
+    print("Executing main...")
     main()
