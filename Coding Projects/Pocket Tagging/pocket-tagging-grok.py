@@ -39,7 +39,6 @@ def clean_tags(tags):
     """Clean tags by removing unwanted characters."""
     cleaned = []
     for tag in tags:
-        # Fixed regex: Remove *, newlines, digits, periods, and whitespace
         cleaned_tag = re.sub(r"[*\n\d.\s]+", "", tag).strip()
         if cleaned_tag:
             cleaned.append(cleaned_tag)
@@ -112,13 +111,13 @@ def fetch_pocket_articles(max_articles=500):
     offset = 0
     count = 100  # Fetch in batches of 100
     retries = 3
-    target = min(max_articles, 500)  # Ensure we don’t exceed 500
+    target = min(max_articles, 500)
 
     while len(all_articles) < target:
         for attempt in range(retries):
             try:
                 remaining = target - len(all_articles)
-                fetch_count = min(count, remaining)  # Adjust count to not exceed target
+                fetch_count = min(count, remaining)
                 print(
                     f"Fetching: count={fetch_count}, offset={offset}, attempt={attempt + 1}"
                 )
@@ -149,35 +148,41 @@ def fetch_pocket_articles(max_articles=500):
 
 
 def tag_pocket_articles(article_tags_dict):
-    """Tag articles in Pocket with debug output."""
+    """Tag articles in Pocket individually with rate limit handling."""
     if not article_tags_dict:
         print("No articles to tag.")
         return
 
-    actions = [
-        {"action": "tags_add", "item_id": item_id, "tags": ",".join(clean_tags(tags))}
-        for item_id, tags in article_tags_dict.items()
-        if tags
-    ]
-    if not actions:
-        print("No valid actions to process.")
-        return
-
-    print(f"Preparing to tag {len(actions)} articles. Sample action: {actions[0]}")
-    try:
-        chunk_size = 50  # Process in chunks of 50 to avoid rate limits
-        for i in range(0, len(actions), chunk_size):
-            chunk = actions[i : i + chunk_size]
-            print(f"Sending chunk {i // chunk_size + 1} with {len(chunk)} actions")
-            response = pocket.send(actions=chunk)  # Use send instead of commit
-            print(f"Tagged {len(chunk)} articles in chunk {i // chunk_size + 1}")
-            time.sleep(1)  # Delay between chunks
-    except Exception as e:
-        print(f"Error bulk tagging: {str(e)}")
-        if hasattr(e, "response") and e.response:
-            print(f"Response status: {e.response.status_code}")
-            print(f"Response details: {e.response.text}")
-        raise
+    print(f"Preparing to tag {len(article_tags_dict)} articles individually.")
+    tagged_count = 0
+    for item_id, tags in article_tags_dict.items():
+        tag_string = ",".join(clean_tags(tags))
+        print(f"Tagging item {item_id} with tags: {tag_string}")
+        retries = 3
+        for attempt in range(retries):
+            try:
+                pocket.tags_add(item_id, tag_string)
+                print(f"Tagged item {item_id} successfully.")
+                tagged_count += 1
+                time.sleep(0.5)  # Delay to avoid rate limits
+                break
+            except pocket.RateLimitException:
+                delay = 60 * (attempt + 1)
+                print(
+                    f"Rate limit hit, retrying in {delay} seconds... (Attempt {attempt + 1}/{retries})"
+                )
+                time.sleep(delay)
+                if attempt == retries - 1:
+                    print(f"Failed to tag item {item_id} after {retries} attempts.")
+            except Exception as e:
+                print(f"Error tagging item {item_id}: {str(e)}")
+                if hasattr(e, "response") and e.response:
+                    print(f"Response status: {e.response.status_code}")
+                    print(f"Response details: {e.response.text}")
+                break
+    print(
+        f"Finished tagging. Successfully tagged {tagged_count} out of {len(article_tags_dict)} articles."
+    )
 
 
 def main():
@@ -193,7 +198,7 @@ def main():
     if articles is not None:
         print(f"Found {len(articles)} untagged articles (limited to 500).")
         article_tags = {}
-        for item_id, article in list(articles.items())[:500]:  # Ensure max 500
+        for item_id, article in list(articles.items())[:500]:
             title = article.get(
                 "resolved_title", article.get("given_title", "Untitled")
             )
