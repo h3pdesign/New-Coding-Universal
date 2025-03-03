@@ -2,6 +2,7 @@ import os
 import time
 import requests
 import re
+import json
 from pocket import Pocket
 from dotenv import load_dotenv
 
@@ -20,6 +21,23 @@ if not all([POCKET_CONSUMER_KEY, POCKET_ACCESS_TOKEN, GROK_API_KEY]):
 
 # Initialize Pocket client
 pocket = Pocket(consumer_key=POCKET_CONSUMER_KEY, access_token=POCKET_ACCESS_TOKEN)
+
+# File to track processed articles
+PROCESSED_FILE = "tagged_articles.json"
+
+
+def load_processed_articles():
+    """Load previously processed article IDs from file."""
+    if os.path.exists(PROCESSED_FILE):
+        with open(PROCESSED_FILE, "r") as f:
+            return set(json.load(f))
+    return set()
+
+
+def save_processed_articles(processed_ids):
+    """Save processed article IDs to file."""
+    with open(PROCESSED_FILE, "w") as f:
+        json.dump(list(processed_ids), f)
 
 
 def test_pocket_connection():
@@ -45,8 +63,8 @@ def clean_tags(tags):
     return cleaned
 
 
-def get_tags_from_grok(content_or_title):
-    """Generate tags using Grok API."""
+def get_tags_from_grok(content_or_title, processed_ids, item_id):
+    """Generate tags using Grok API with rate limit handling."""
     print(f"Requesting tags for: {content_or_title}")
     headers = {
         "Authorization": f"Bearer {GROK_API_KEY}",
@@ -68,9 +86,10 @@ def get_tags_from_grok(content_or_title):
         "temperature": 0.7,
     }
     retries = 5
-    time.sleep(2)  # Initial delay to avoid rate limits
+    initial_delay = 5  # Increased initial delay to 5 seconds
     for attempt in range(retries):
         try:
+            time.sleep(initial_delay)
             response = requests.post(
                 GROK_API_URL, headers=headers, json=payload, timeout=10
             )
@@ -88,14 +107,16 @@ def get_tags_from_grok(content_or_title):
             return cleaned_tags
         except requests.exceptions.HTTPError as e:
             if e.response.status_code == 429:
-                delay = 60 * (attempt + 1)
+                delay = 60 * (attempt + 1)  # Exponential backoff: 60s, 120s, etc.
                 print(
                     f"Rate limit hit, retrying in {delay} seconds... (Attempt {attempt + 1}/{retries})"
                 )
-                time.sleep(delay)
                 if attempt == retries - 1:
-                    print(f"Max retries reached, using fallback tag")
-                    return ["to_tag_later"]
+                    print(
+                        f"Max retries reached for item {item_id}. Saving progress and exiting."
+                    )
+                    return None  # Signal to save and exit
+                time.sleep(delay)
             else:
                 print(f"Grok API HTTP error: {str(e)}")
                 return ["to_tag_later"]
@@ -104,12 +125,14 @@ def get_tags_from_grok(content_or_title):
             return ["to_tag_later"]
 
 
-def fetch_pocket_articles(max_articles=500):
-    """Fetch up to 500 untagged articles from Pocket."""
+def fetch_pocket_articles(max_articles=500, processed_ids=None):
+    """Fetch up to 500 untagged articles from Pocket, skipping processed ones."""
+    if processed_ids is None:
+        processed_ids = set()
     print("Fetching up to 500 untagged Pocket articles...")
     all_articles = {}
     offset = 0
-    count = 100  # Fetch in batches of 100
+    count = 100
     retries = 3
     target = min(max_articles, 500)
 
@@ -125,7 +148,11 @@ def fetch_pocket_articles(max_articles=500):
                     count=fetch_count, offset=offset, tag="_untagged_"
                 )
                 articles = response[0].get("list", {})
-                all_articles.update(articles)
+                # Filter out already processed articles
+                filtered_articles = {
+                    k: v for k, v in articles.items() if k not in processed_ids
+                }
+                all_articles.update(filtered_articles)
 
                 if len(articles) < fetch_count or len(all_articles) >= target:
                     print(f"Stopping fetch: Retrieved {len(all_articles)} articles")
@@ -147,7 +174,7 @@ def fetch_pocket_articles(max_articles=500):
                     return all_articles if all_articles else None
 
 
-def tag_pocket_articles(article_tags_dict):
+def tag_pocket_articles(article_tags_dict, processed_ids):
     """Tag articles in Pocket individually with rate limit handling."""
     if not article_tags_dict:
         print("No articles to tag.")
@@ -164,12 +191,14 @@ def tag_pocket_articles(article_tags_dict):
                 pocket.tags_add(item_id, tag_string)
                 print(f"Tagged item {item_id} successfully.")
                 tagged_count += 1
-                time.sleep(0.5)  # Delay to avoid rate limits
+                processed_ids.add(item_id)  # Mark as processed
+                save_processed_articles(processed_ids)  # Save progress
+                time.sleep(0.5)  # Delay to avoid Pocket rate limits
                 break
             except pocket.RateLimitException:
                 delay = 60 * (attempt + 1)
                 print(
-                    f"Rate limit hit, retrying in {delay} seconds... (Attempt {attempt + 1}/{retries})"
+                    f"Pocket rate limit hit, retrying in {delay} seconds... (Attempt {attempt + 1}/{retries})"
                 )
                 time.sleep(delay)
                 if attempt == retries - 1:
@@ -186,7 +215,7 @@ def tag_pocket_articles(article_tags_dict):
 
 
 def main():
-    """Main execution logic for tagging 500 articles."""
+    """Main execution logic for tagging 500 articles with progress tracking."""
     print("Script started")
     if not test_pocket_connection():
         print(
@@ -194,8 +223,12 @@ def main():
         )
         return
 
-    articles = fetch_pocket_articles(max_articles=500)
-    if articles is not None:
+    # Load previously processed articles
+    processed_ids = load_processed_articles()
+    print(f"Loaded {len(processed_ids)} previously processed article IDs.")
+
+    articles = fetch_pocket_articles(max_articles=500, processed_ids=processed_ids)
+    if articles:
         print(f"Found {len(articles)} untagged articles (limited to 500).")
         article_tags = {}
         for item_id, article in list(articles.items())[:500]:
@@ -203,15 +236,19 @@ def main():
                 "resolved_title", article.get("given_title", "Untitled")
             )
             print(f"Processing: {title}")
-            tags = get_tags_from_grok(title)
+            tags = get_tags_from_grok(title, processed_ids, item_id)
+            if tags is None:  # Rate limit exceeded, save and exit
+                save_processed_articles(processed_ids)
+                print("Script paused due to Grok API rate limits. Resume later.")
+                return
             if tags:
                 article_tags[item_id] = tags
         if article_tags:
-            tag_pocket_articles(article_tags)
+            tag_pocket_articles(article_tags, processed_ids)
         else:
             print("No tags generated for any articles.")
     else:
-        print("Failed to fetch articles.")
+        print("Failed to fetch articles or no new articles to tag.")
 
     print("Script finished")
 
