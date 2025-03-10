@@ -96,14 +96,11 @@ def load_existing_tags_from_cache():
                 )
                 time.sleep(1)
                 break
-            except pocket.RateLimitException as e:
-                delay = 60 * (attempt + 1)
-                print(f"Rate limit hit: {str(e)}. Retrying in {delay} seconds...")
-                time.sleep(delay)
-            except pocket.PocketException as e:
-                delay = 5 * (attempt + 1)
-                print(f"Pocket API error: {str(e)}. Retrying in {delay} seconds...")
-                time.sleep(delay)
+            except Exception as e:
+                print(f"Error fetching tags: {str(e)}")
+                if attempt == retries - 1:
+                    return existing_tags
+                time.sleep(5)
         if len(articles) < count:
             break
 
@@ -173,17 +170,10 @@ def fetch_pocket_articles(max_articles=1000, processed_ids=None, offset_start=0)
                 offset += fetch_count
                 time.sleep(1)
                 break
-            except pocket.RateLimitException as e:
-                delay = 60 * (attempt + 1)
-                print(f"Rate limit hit: {str(e)}. Retrying in {delay} seconds...")
-                time.sleep(delay)
-            except pocket.PocketException as e:
-                delay = 5 * (attempt + 1)
-                print(f"Pocket API error: {str(e)}. Retrying in {delay} seconds...")
-                time.sleep(delay)
             except Exception as e:
                 print(f"Error fetching articles: {str(e)}")
                 if attempt == retries - 1:
+                    print("Max retries reached. Returning partial fetch.")
                     return all_articles
                 time.sleep(5)
     print(f"Finished fetching. Total articles: {len(all_articles)}")
@@ -205,25 +195,29 @@ def map_to_common_tags(grok_tags, common_tags, existing_tags):
     mapped_tags = set()
     for tag in grok_tags:
         cleaned_tag = clean_tag(tag)
-        if is_single_noun(cleaned_tag):
-            if cleaned_tag in common_tags:
-                mapped_tags.add(cleaned_tag)
-            elif cleaned_tag in existing_tags:
-                mapped_tags.add(cleaned_tag)
+        if is_single_noun(cleaned_tag):  # Accept any single-word noun
+            mapped_tags.add(cleaned_tag)
+        # Optionally log rejected tags for debugging
+        elif cleaned_tag:
+            print(f"Rejected tag '{cleaned_tag}' - not a single-word noun")
     return list(mapped_tags) if mapped_tags else []
 
 
 def get_tags_from_grok(content_or_title, grok_cache):
-    if content_or_title in grok_cache:
-        print(f"Using cached tags for: {content_or_title}")
-        return grok_cache[content_or_title]
+    cached_tags = grok_cache.get(content_or_title)
+    if cached_tags is not None:
+        print(f"Using cached tags for '{content_or_title}': {cached_tags}")
+        if cached_tags:  # Only return non-empty cached tags
+            return cached_tags
+        else:
+            print(f"Skipping empty cached tags for '{content_or_title}' - regenerating")
 
     headers = {
         "Authorization": f"Bearer {GROK_API_KEY}",
         "Content-Type": "application/json",
     }
     payload = {
-        "model": "grok-2-1212",
+        "model": "grok-2-1212",  # Update to "grok-3" if specified
         "messages": [
             {
                 "role": "system",
@@ -253,7 +247,7 @@ def get_tags_from_grok(content_or_title, grok_cache):
                 .strip()
             )
             tags = [tag.strip() for tag in tags_text.split(",")] if tags_text else []
-            print(f"Grok-generated tags: {tags}")
+            print(f"Grok-generated tags for '{content_or_title}': {tags}")
             grok_cache[content_or_title] = tags
             save_grok_tag_cache(grok_cache)
             return tags
@@ -281,7 +275,7 @@ def tag_pocket_articles(
             break
         mapped_tags = map_to_common_tags(tags, common_tags, existing_tags)
         if not mapped_tags:
-            print(f"Skipping item {item_id}: No valid tags generated.")
+            print(f"Skipping item {item_id}: No valid tags generated from {tags}")
             continue
         tag_string = ",".join(mapped_tags)
         print(f"Tagging item {item_id} with tags: {tag_string}")
@@ -294,13 +288,11 @@ def tag_pocket_articles(
                 processed_ids.add(item_id)
                 time.sleep(0.5)
                 break
-            except pocket.RateLimitException as e:
-                delay = 60 * (attempt + 1)
-                print(f"Rate limit hit: {str(e)}. Retrying in {delay} seconds...")
-                time.sleep(delay)
             except Exception as e:
                 print(f"Error tagging item {item_id}: {str(e)}")
-                break
+                if attempt == retries - 1:
+                    break
+                time.sleep(5)
     print(f"Tagged {tagged_count} articles.")
     return tagged_count
 
@@ -356,9 +348,9 @@ def automate_tagging():
             print("No articles tagged in this batch.")
             break
 
-        if len(articles) < batch_size:
+        if len(articles) < batch_size and not article_tags:
             print(
-                "Fewer articles fetched than batch size. Assuming all untagged articles processed."
+                "Fewer articles fetched and no tags applied. Assuming all untagged articles processed."
             )
             break
 

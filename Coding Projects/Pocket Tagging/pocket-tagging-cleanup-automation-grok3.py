@@ -2,7 +2,6 @@ import os
 import time
 import re
 from pocket import Pocket
-import pocket.exceptions  # Correct import for exceptions
 from dotenv import load_dotenv
 
 # Load environment variables from .env file
@@ -46,11 +45,11 @@ def fetch_articles(max_articles=1000, offset_start=0):
                 offset += fetch_count
                 time.sleep(1)
                 break
-            except pocket.exceptions.RateLimitException as e:
+            except pocket.RateLimitException as e:
                 delay = 60 * (attempt + 1)
                 print(f"Rate limit hit: {str(e)}. Retrying in {delay} seconds...")
                 time.sleep(delay)
-            except pocket.exceptions.PocketException as e:
+            except pocket.PocketException as e:
                 print(
                     f"Pocket API error: {str(e)} (Status: {e.status_code if hasattr(e, 'status_code') else 'Unknown'})"
                 )
@@ -109,11 +108,11 @@ def clean_compound_tags(articles):
                     updated_articles += 1
                     time.sleep(0.5)
                     break
-                except pocket.exceptions.RateLimitException as e:
+                except pocket.RateLimitException as e:
                     delay = 60 * (attempt + 1)
                     print(f"Rate limit hit: {str(e)}. Retrying in {delay} seconds...")
                     time.sleep(delay)
-                except pocket.exceptions.PocketException as e:
+                except pocket.PocketException as e:
                     print(f"Pocket API error updating item {item_id}: {str(e)}")
                     break
                 except Exception as e:
