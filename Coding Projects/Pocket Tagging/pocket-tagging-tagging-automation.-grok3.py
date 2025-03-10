@@ -7,7 +7,6 @@ from pocket import Pocket
 from dotenv import load_dotenv
 from collections import defaultdict
 
-# Load environment variables from .env file
 load_dotenv()
 POCKET_CONSUMER_KEY = os.getenv("POCKET_CONSUMER_KEY")
 POCKET_ACCESS_TOKEN = os.getenv("POCKET_ACCESS_TOKEN")
@@ -224,7 +223,7 @@ def get_tags_from_grok(content_or_title, grok_cache):
         "Content-Type": "application/json",
     }
     payload = {
-        "model": "grok-2-1212",  # Update to "grok-3" if specified
+        "model": "grok-2-1212",
         "messages": [
             {
                 "role": "system",
@@ -306,11 +305,8 @@ def tag_pocket_articles(
     return tagged_count
 
 
-def main():
-    print("Script started")
-    print(f"Using Consumer Key: {POCKET_CONSUMER_KEY}")
-    print(f"Using Access Token: {POCKET_ACCESS_TOKEN}")
-
+def automate_tagging():
+    print("Tagging automation started")
     existing_tags = load_existing_tags_from_cache()
     common_tags = COMMON_TAGS.union(
         {tag for tag in existing_tags if is_single_noun(tag)}
@@ -318,15 +314,18 @@ def main():
     grok_cache = load_grok_tag_cache()
     processed_ids = load_processed_ids()
 
-    max_articles_per_run = 1000  # Target 1000 articles per run
-    offset = 0  # Adjust manually (0, 1000, 2000, etc.)
+    batch_size = 1000
+    offset = 0
+    total_tagged = 0
 
-    articles = fetch_pocket_articles(
-        max_articles=max_articles_per_run,
-        processed_ids=processed_ids,
-        offset_start=offset,
-    )
-    if articles:
+    while True:
+        print(f"\n=== Tagging Untagged Articles (Batch starting at {offset}) ===")
+        articles = fetch_pocket_articles(
+            max_articles=batch_size, processed_ids=processed_ids, offset_start=offset
+        )
+        if not articles:
+            print("No more untagged articles to tag.")
+            break
         article_tags = {}
         for item_id, article in articles.items():
             if item_id not in processed_ids:
@@ -347,15 +346,24 @@ def main():
                 processed_ids,
                 common_tags,
                 existing_tags,
-                target_count=max_articles_per_run,
+                target_count=batch_size,
             )
+            total_tagged += tagged_count
+            offset += tagged_count
             save_processed_ids(processed_ids)
-            print(f"Next offset: {offset + tagged_count}")
-    else:
-        print("No untagged articles fetched.")
+            print(f"Total articles tagged so far: {total_tagged}")
+        else:
+            print("No articles tagged in this batch.")
+            break
 
-    print("Script finished")
+        if len(articles) < batch_size:
+            print(
+                "Fewer articles fetched than batch size. Assuming all untagged articles processed."
+            )
+            break
+
+    print(f"Tagging automation finished. Total tagged: {total_tagged}")
 
 
 if __name__ == "__main__":
-    main()
+    automate_tagging()

@@ -2,6 +2,7 @@ import os
 import time
 import re
 from pocket import Pocket
+import pocket.exceptions  # Correct import for exceptions
 from dotenv import load_dotenv
 
 # Load environment variables from .env file
@@ -45,17 +46,24 @@ def fetch_articles(max_articles=1000, offset_start=0):
                 offset += fetch_count
                 time.sleep(1)
                 break
-            except pocket.RateLimitException as e:
+            except pocket.exceptions.RateLimitException as e:
                 delay = 60 * (attempt + 1)
                 print(f"Rate limit hit: {str(e)}. Retrying in {delay} seconds...")
                 time.sleep(delay)
-            except pocket.PocketException as e:
+            except pocket.exceptions.PocketException as e:
+                print(
+                    f"Pocket API error: {str(e)} (Status: {e.status_code if hasattr(e, 'status_code') else 'Unknown'})"
+                )
+                if attempt == retries - 1:
+                    print("Max retries reached. Returning partial fetch.")
+                    return all_articles
                 delay = 5 * (attempt + 1)
-                print(f"Pocket API error: {str(e)}. Retrying in {delay} seconds...")
+                print(f"Retrying in {delay} seconds...")
                 time.sleep(delay)
             except Exception as e:
                 print(f"Unexpected error fetching articles: {str(e)}")
                 if attempt == retries - 1:
+                    print("Max retries reached. Returning partial fetch.")
                     return all_articles
                 time.sleep(5)
     print(f"Finished fetching. Total articles: {len(all_articles)}")
@@ -101,12 +109,15 @@ def clean_compound_tags(articles):
                     updated_articles += 1
                     time.sleep(0.5)
                     break
-                except pocket.RateLimitException as e:
+                except pocket.exceptions.RateLimitException as e:
                     delay = 60 * (attempt + 1)
                     print(f"Rate limit hit: {str(e)}. Retrying in {delay} seconds...")
                     time.sleep(delay)
-                except pocket.PocketException as e:
-                    print(f"Error updating item {item_id}: {str(e)}")
+                except pocket.exceptions.PocketException as e:
+                    print(f"Pocket API error updating item {item_id}: {str(e)}")
+                    break
+                except Exception as e:
+                    print(f"Unexpected error updating item {item_id}: {str(e)}")
                     break
 
     print(
@@ -116,23 +127,31 @@ def clean_compound_tags(articles):
     return updated_articles
 
 
-def main():
-    print("Script started")
-    print(f"Using Consumer Key: {POCKET_CONSUMER_KEY}")
-    print(f"Using Access Token: {POCKET_ACCESS_TOKEN}")
+def automate_cleanup():
+    print("Cleanup automation started")
+    batch_size = 1000
+    offset = 0
+    total_cleaned = 0
 
-    max_articles_per_run = 1000  # Process 1000 articles per run
-    offset = 0  # Adjust manually (0, 1000, 2000, etc.)
-
-    articles = fetch_articles(max_articles=max_articles_per_run, offset_start=offset)
-    if articles:
+    while True:
+        print(f"\n=== Cleaning Compound Tags (Batch starting at {offset}) ===")
+        articles = fetch_articles(max_articles=batch_size, offset_start=offset)
+        if not articles:
+            print("No more articles to clean.")
+            break
         cleaned_count = clean_compound_tags(articles)
-        print(f"Next offset: {offset + len(articles)}")
-    else:
-        print("No articles fetched.")
+        total_cleaned += len(articles)
+        offset += len(articles)
+        print(f"Total articles cleaned so far: {total_cleaned}")
 
-    print("Script finished")
+        if len(articles) < batch_size:
+            print(
+                "Fewer articles fetched than batch size. Assuming all articles processed."
+            )
+            break
+
+    print(f"Cleanup automation finished. Total cleaned: {total_cleaned}")
 
 
 if __name__ == "__main__":
-    main()
+    automate_cleanup()

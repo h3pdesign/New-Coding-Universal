@@ -138,11 +138,10 @@ def save_processed_ids(processed_ids):
         json.dump(list(processed_ids), f)
 
 
-def fetch_pocket_articles(max_articles=1000, processed_ids=None, offset_start=0):
-    if processed_ids is None:
-        processed_ids = set()
+def fetch_articles(max_articles=1000, offset_start=0, tag_filter=None):
+    """Fetch up to max_articles from Pocket starting at offset_start, optionally filtering by tag."""
     print(
-        f"Fetching up to {max_articles} untagged articles from Pocket starting at offset {offset_start}..."
+        f"Fetching up to {max_articles} articles from Pocket starting at offset {offset_start}..."
     )
     all_articles = {}
     offset = offset_start
@@ -155,17 +154,18 @@ def fetch_pocket_articles(max_articles=1000, processed_ids=None, offset_start=0)
                 remaining = max_articles - len(all_articles)
                 fetch_count = min(count, remaining)
                 print(f"Fetching {fetch_count} articles at offset {offset}...")
-                response = pocket.get(
-                    count=fetch_count,
-                    offset=offset,
-                    tag="_untagged_",
-                    detailType="complete",
-                )
-                articles = response[0].get("list", {})
-                filtered_articles = {
-                    k: v for k, v in articles.items() if k not in processed_ids
+                params = {
+                    "count": fetch_count,
+                    "offset": offset,
+                    "detailType": "complete",
+                    "state": "all",
                 }
-                all_articles.update(filtered_articles)
+                if tag_filter:
+                    params["tag"] = tag_filter
+                response = pocket.get(**params)
+                articles = response[0].get("list", {})
+                print(f"Fetched {len(articles)} articles at offset {offset}")
+                all_articles.update(articles)
                 if len(articles) < fetch_count:
                     print(
                         f"Finished fetching early. Total articles: {len(all_articles)}"
@@ -183,12 +183,66 @@ def fetch_pocket_articles(max_articles=1000, processed_ids=None, offset_start=0)
                 print(f"Pocket API error: {str(e)}. Retrying in {delay} seconds...")
                 time.sleep(delay)
             except Exception as e:
-                print(f"Error fetching articles: {str(e)}")
+                print(f"Unexpected error fetching articles: {str(e)}")
                 if attempt == retries - 1:
                     return all_articles
                 time.sleep(5)
     print(f"Finished fetching. Total articles: {len(all_articles)}")
     return all_articles
+
+
+def is_compound_tag(tag):
+    cleaned = re.sub(r"[°€\W]+", "", tag)
+    if len(cleaned) > 3:
+        if re.search(r"[a-z][A-Z]", cleaned):
+            return True
+        if len(cleaned) > 10 and not re.match(r"^[a-z]+$", cleaned):
+            return True
+    return False
+
+
+def clean_compound_tags(articles):
+    updated_articles = 0
+    compound_tags_removed = set()
+
+    for item_id, article in articles.items():
+        tags_dict = article.get("tags", {})
+        if not tags_dict:
+            continue
+
+        original_tags = set(tags_dict.keys())
+        compound_tags = {tag for tag in original_tags if is_compound_tag(tag)}
+        if compound_tags:
+            compound_tags_removed.update(compound_tags)
+            tags_to_keep = original_tags - compound_tags
+            new_tags = list(tags_to_keep)
+            tag_string = ",".join(new_tags) if new_tags else ""
+            print(f"Cleaning Item {item_id} - Original tags: {list(original_tags)}")
+            print(f"Cleaned tags: {new_tags}")
+
+            retries = 3
+            for attempt in range(retries):
+                try:
+                    pocket.tags_clear(item_id)
+                    if tag_string:
+                        pocket.tags_add(item_id, tag_string)
+                    print(f"Updated item {item_id}")
+                    updated_articles += 1
+                    time.sleep(0.5)
+                    break
+                except pocket.RateLimitException as e:
+                    delay = 60 * (attempt + 1)
+                    print(f"Rate limit hit: {str(e)}. Retrying in {delay} seconds...")
+                    time.sleep(delay)
+                except pocket.PocketException as e:
+                    print(f"Error updating item {item_id}: {str(e)}")
+                    break
+
+    print(
+        f"Removed {len(compound_tags_removed)} compound tags: {list(compound_tags_removed)[:10]}..."
+    )
+    print(f"Finished cleaning. Updated {updated_articles} articles.")
+    return updated_articles
 
 
 def clean_tag(tag):
@@ -318,17 +372,31 @@ def main():
     grok_cache = load_grok_tag_cache()
     processed_ids = load_processed_ids()
 
-    max_articles_per_run = 1000  # Target 1000 articles per run
-    offset = 0  # Adjust manually (0, 1000, 2000, etc.)
+    max_articles_per_run = 1000  # Set to 1000 per run (change to 2000 if preferred)
+    clean_offset = 0  # Adjust manually (0, 1000, 2000, etc.)
+    tag_offset = 0  # Adjust manually (0, 1000, 2000, etc.)
 
-    articles = fetch_pocket_articles(
-        max_articles=max_articles_per_run,
-        processed_ids=processed_ids,
-        offset_start=offset,
+    # Step 1: Clean compound tags
+    print("\n=== Cleaning Compound Tags ===")
+    articles_to_clean = fetch_articles(
+        max_articles=max_articles_per_run, offset_start=clean_offset
     )
-    if articles:
+    if articles_to_clean:
+        cleaned_count = clean_compound_tags(articles_to_clean)
+        print(f"Next clean offset: {clean_offset + len(articles_to_clean)}")
+    else:
+        print("No articles fetched for cleaning.")
+
+    # Step 2: Tag untagged articles
+    print("\n=== Tagging Untagged Articles ===")
+    articles_to_tag = fetch_articles(
+        max_articles=max_articles_per_run,
+        offset_start=tag_offset,
+        tag_filter="_untagged_",
+    )
+    if articles_to_tag:
         article_tags = {}
-        for item_id, article in articles.items():
+        for item_id, article in articles_to_tag.items():
             if item_id not in processed_ids:
                 title = article.get(
                     "resolved_title", article.get("given_title", "Untitled")
@@ -350,7 +418,7 @@ def main():
                 target_count=max_articles_per_run,
             )
             save_processed_ids(processed_ids)
-            print(f"Next offset: {offset + tagged_count}")
+            print(f"Next tag offset: {tag_offset + tagged_count}")
     else:
         print("No untagged articles fetched.")
 
