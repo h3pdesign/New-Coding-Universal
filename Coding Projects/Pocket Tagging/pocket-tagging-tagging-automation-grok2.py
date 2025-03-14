@@ -6,6 +6,7 @@ import json
 from pocket import Pocket
 from dotenv import load_dotenv
 from collections import defaultdict
+from datetime import datetime
 
 load_dotenv()
 POCKET_CONSUMER_KEY = os.getenv("POCKET_CONSUMER_KEY")
@@ -152,19 +153,36 @@ def fetch_pocket_articles(max_articles=1000, processed_ids=None, offset_start=0)
                 fetch_count = min(count, remaining)
                 print(f"Fetching {fetch_count} articles at offset {offset}...")
                 response = pocket.get(
-                    count=fetch_count,
-                    offset=offset,
-                    tag="_untagged_",
-                    detailType="complete",
+                    count=fetch_count, offset=offset, detailType="complete", state="all"
                 )
                 articles = response[0].get("list", {})
-                filtered_articles = {
-                    k: v for k, v in articles.items() if k not in processed_ids
-                }
-                all_articles.update(filtered_articles)
+                untagged_articles = {}
+                for k, v in articles.items():
+                    tags = v.get("tags", {})
+                    has_tags = bool(tags)  # True if tags dict is non-empty
+                    time_added = int(v.get("time_added", 0))
+                    date_added = (
+                        datetime.fromtimestamp(time_added).strftime("%Y-%m-%d")
+                        if time_added
+                        else "Unknown"
+                    )
+                    if not has_tags and k not in processed_ids:
+                        untagged_articles[k] = v
+                        print(
+                            f"Found untagged article {k}: {v.get('resolved_title', v.get('given_title', 'Untitled'))} (Added: {date_added})"
+                        )
+                    elif has_tags:
+                        print(
+                            f"Skipped article {k} - has tags: {list(tags.keys())} (Added: {date_added})"
+                        )
+                    else:
+                        print(
+                            f"Skipped article {k} - already processed (Added: {date_added})"
+                        )
+                all_articles.update(untagged_articles)
                 if len(articles) < fetch_count:
                     print(
-                        f"Finished fetching early. Total articles: {len(all_articles)}"
+                        f"Finished fetching early. Total untagged: {len(all_articles)} (Total fetched: {len(articles)})"
                     )
                     return all_articles
                 offset += fetch_count
@@ -176,7 +194,7 @@ def fetch_pocket_articles(max_articles=1000, processed_ids=None, offset_start=0)
                     print("Max retries reached. Returning partial fetch.")
                     return all_articles
                 time.sleep(5)
-    print(f"Finished fetching. Total articles: {len(all_articles)}")
+    print(f"Finished fetching. Total untagged: {len(all_articles)}")
     return all_articles
 
 
@@ -195,9 +213,8 @@ def map_to_common_tags(grok_tags, common_tags, existing_tags):
     mapped_tags = set()
     for tag in grok_tags:
         cleaned_tag = clean_tag(tag)
-        if is_single_noun(cleaned_tag):  # Accept any single-word noun
+        if is_single_noun(cleaned_tag):
             mapped_tags.add(cleaned_tag)
-        # Optionally log rejected tags for debugging
         elif cleaned_tag:
             print(f"Rejected tag '{cleaned_tag}' - not a single-word noun")
     return list(mapped_tags) if mapped_tags else []
@@ -207,7 +224,7 @@ def get_tags_from_grok(content_or_title, grok_cache):
     cached_tags = grok_cache.get(content_or_title)
     if cached_tags is not None:
         print(f"Using cached tags for '{content_or_title}': {cached_tags}")
-        if cached_tags:  # Only return non-empty cached tags
+        if cached_tags:
             return cached_tags
         else:
             print(f"Skipping empty cached tags for '{content_or_title}' - regenerating")
@@ -217,7 +234,7 @@ def get_tags_from_grok(content_or_title, grok_cache):
         "Content-Type": "application/json",
     }
     payload = {
-        "model": "grok-2-1212",  # Update to "grok-3" if specified
+        "model": "grok-2-1212",
         "messages": [
             {
                 "role": "system",
@@ -316,7 +333,7 @@ def automate_tagging():
             max_articles=batch_size, processed_ids=processed_ids, offset_start=offset
         )
         if not articles:
-            print("No more untagged articles to tag.")
+            print("No more untagged articles to tag in this batch.")
             break
         article_tags = {}
         for item_id, article in articles.items():
@@ -341,18 +358,23 @@ def automate_tagging():
                 target_count=batch_size,
             )
             total_tagged += tagged_count
-            offset += tagged_count
+            offset += len(articles)
             save_processed_ids(processed_ids)
             print(f"Total articles tagged so far: {total_tagged}")
         else:
             print("No articles tagged in this batch.")
-            break
+            offset += len(articles)
+            save_processed_ids(processed_ids)
 
-        if len(articles) < batch_size and not article_tags:
+        if len(articles) < batch_size:
             print(
-                "Fewer articles fetched and no tags applied. Assuming all untagged articles processed."
+                f"Fewer articles fetched than batch size ({len(articles)} < {batch_size}). Checking next batch..."
             )
-            break
+            if not fetch_pocket_articles(
+                max_articles=1, processed_ids=processed_ids, offset_start=offset
+            ):
+                print("Confirmed: No more untagged articles remain.")
+                break
 
     print(f"Tagging automation finished. Total tagged: {total_tagged}")
 
