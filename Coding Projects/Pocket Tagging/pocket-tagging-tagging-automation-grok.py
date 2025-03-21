@@ -72,43 +72,8 @@ def load_existing_tags_from_cache():
             tags = set(json.load(f))
         print(f"Loaded {len(tags)} existing tags from cache.")
         return tags
-    print("No tag cache found. Fetching existing tags from Pocket...")
-    all_articles = {}
-    offset = 0
-    count = 100
-    retries = 5
-    existing_tags = set()
-
-    while True:
-        for attempt in range(retries):
-            try:
-                response = pocket.get(
-                    count=count, offset=offset, detailType="complete", state="all"
-                )
-                articles = response[0].get("list", {})
-                all_articles.update(articles)
-                for article in articles.values():
-                    existing_tags.update(article.get("tags", {}).keys())
-                if len(articles) < count:
-                    break
-                offset += count
-                print(
-                    f"Fetched {len(all_articles)} articles so far... (Offset: {offset})"
-                )
-                time.sleep(1)
-                break
-            except Exception as e:
-                print(f"Error fetching tags: {str(e)}")
-                if attempt == retries - 1:
-                    return existing_tags
-                time.sleep(5)
-        if len(articles) < count:
-            break
-
-    with open(TAG_CACHE_FILE, "w") as f:
-        json.dump(list(existing_tags), f)
-    print(f"Cached {len(existing_tags)} existing tags.")
-    return existing_tags
+    print("No tag cache found. Starting with empty tag set.")
+    return set()
 
 
 def load_grok_tag_cache():
@@ -126,13 +91,17 @@ def save_grok_tag_cache(cache):
 def load_processed_ids():
     if os.path.exists(PROCESSED_IDS_FILE):
         with open(PROCESSED_IDS_FILE, "r") as f:
-            return set(json.load(f))
+            ids = set(json.load(f))
+            print(f"Loaded {len(ids)} processed IDs from {PROCESSED_IDS_FILE}.")
+            return ids
+    print(f"No processed IDs file found at {PROCESSED_IDS_FILE}. Starting fresh.")
     return set()
 
 
 def save_processed_ids(processed_ids):
     with open(PROCESSED_IDS_FILE, "w") as f:
         json.dump(list(processed_ids), f)
+    print(f"Saved {len(processed_ids)} processed IDs to {PROCESSED_IDS_FILE}.")
 
 
 def fetch_pocket_articles(max_articles=1000, processed_ids=None, offset_start=0):
@@ -143,7 +112,7 @@ def fetch_pocket_articles(max_articles=1000, processed_ids=None, offset_start=0)
     )
     all_articles = {}
     offset = offset_start
-    count = 100
+    count = min(100, max_articles)
     retries = 5
 
     while len(all_articles) < max_articles:
@@ -153,23 +122,28 @@ def fetch_pocket_articles(max_articles=1000, processed_ids=None, offset_start=0)
                 fetch_count = min(count, remaining)
                 print(f"Fetching {fetch_count} articles at offset {offset}...")
                 response = pocket.get(
-                    count=fetch_count, offset=offset, detailType="complete", state="all"
+                    count=fetch_count,
+                    offset=offset,
+                    detailType="complete",
+                    state="all",
+                    sort="newest",
                 )
                 articles = response[0].get("list", {})
                 untagged_articles = {}
                 for k, v in articles.items():
                     tags = v.get("tags", {})
-                    has_tags = bool(tags)  # True if tags dict is non-empty
+                    has_tags = bool(tags)
                     time_added = int(v.get("time_added", 0))
                     date_added = (
                         datetime.fromtimestamp(time_added).strftime("%Y-%m-%d")
                         if time_added
                         else "Unknown"
                     )
+                    title = v.get("resolved_title", v.get("given_title", "Untitled"))
                     if not has_tags and k not in processed_ids:
                         untagged_articles[k] = v
                         print(
-                            f"Found untagged article {k}: {v.get('resolved_title', v.get('given_title', 'Untitled'))} (Added: {date_added})"
+                            f"Found untagged article {k}: {title} (Added: {date_added})"
                         )
                     elif has_tags:
                         print(
@@ -189,11 +163,21 @@ def fetch_pocket_articles(max_articles=1000, processed_ids=None, offset_start=0)
                 time.sleep(1)
                 break
             except Exception as e:
-                print(f"Error fetching articles: {str(e)}")
-                if attempt == retries - 1:
-                    print("Max retries reached. Returning partial fetch.")
-                    return all_articles
-                time.sleep(5)
+                if "rate limiting" in str(e).lower() or "forbidden" in str(e).lower():
+                    delay = (
+                        3600 if attempt == 0 else 60 * (attempt + 1)
+                    )  # 1 hour on first hit
+                    print(f"Rate limit hit: {str(e)}. Retrying in {delay} seconds...")
+                    time.sleep(delay)
+                    if attempt == retries - 1:
+                        print("Max retries reached. Returning partial fetch.")
+                        return all_articles
+                else:
+                    print(f"Unexpected error fetching articles: {str(e)}")
+                    if attempt == retries - 1:
+                        print("Max retries reached. Returning partial fetch.")
+                        return all_articles
+                    time.sleep(5)
     print(f"Finished fetching. Total untagged: {len(all_articles)}")
     return all_articles
 
@@ -306,10 +290,17 @@ def tag_pocket_articles(
                 time.sleep(0.5)
                 break
             except Exception as e:
-                print(f"Error tagging item {item_id}: {str(e)}")
-                if attempt == retries - 1:
-                    break
-                time.sleep(5)
+                if "rate limiting" in str(e).lower() or "forbidden" in str(e).lower():
+                    delay = 60 * (attempt + 1)
+                    print(
+                        f"Rate limit hit while tagging: {str(e)}. Retrying in {delay} seconds..."
+                    )
+                    time.sleep(delay)
+                else:
+                    print(f"Error tagging item {item_id}: {str(e)}")
+                    if attempt == retries - 1:
+                        break
+                    time.sleep(5)
     print(f"Tagged {tagged_count} articles.")
     return tagged_count
 
