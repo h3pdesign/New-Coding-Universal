@@ -1,59 +1,98 @@
 import os
-import requests
+import time
+import re
 import json
+import unicodedata
+import csv
+import spacy
+from pocket import Pocket
 from dotenv import load_dotenv
 
-# Load environment variables from .env file
+# Load environment variables
 load_dotenv()
-
-# Pocket API credentials
 POCKET_CONSUMER_KEY = os.getenv("POCKET_CONSUMER_KEY")
 POCKET_ACCESS_TOKEN = os.getenv("POCKET_ACCESS_TOKEN")
 
-# Validate environment variables
 if not all([POCKET_CONSUMER_KEY, POCKET_ACCESS_TOKEN]):
-    raise ValueError("Missing required environment variables. Check your .env file.")
+    raise ValueError("Missing Pocket environment variables. Check your .env file.")
 
-# Define the action
-action = [{"action": "tags_add", "item_id": "3433414518", "tags": "test1,test2"}]
+pocket = Pocket(consumer_key=POCKET_CONSUMER_KEY, access_token=POCKET_ACCESS_TOKEN)
 
-# Prepare the payload
-payload = {
-    "consumer_key": POCKET_CONSUMER_KEY,
-    "access_token": POCKET_ACCESS_TOKEN,
-    "actions": action,
-}
+# Load SpaCy German model
+nlp = spacy.load("de_core_news_sm")
 
-# Send the request directly to Pocket's API
-url = "https://getpocket.com/v3/send"
-headers = {"Content-Type": "application/json"}
+TAG_MAPPING_FILE = "tag_mapping.json"
+CLEANED_EXPORT_FILE = "cleaned_pocket_data.json"
 
-try:
-    response = requests.post(url, data=json.dumps(payload), headers=headers, timeout=10)
-    response.raise_for_status()
-    print("Test tag applied successfully")
-    print("Response:", response.json())
-except requests.exceptions.HTTPError as e:
-    print(f"Error tagging: {e}")
-    print(f"Response status: {e.response.status_code}")
-    print(f"Response details: {e.response.text}")
-except requests.exceptions.RequestException as e:
-    print(f"Request error: {e}")
 
-# Verify the tags
-try:
-    verify_url = "https://getpocket.com/v3/get"
-    verify_payload = {
-        "consumer_key": POCKET_CONSUMER_KEY,
-        "access_token": POCKET_ACCESS_TOKEN,
-        "item_id": "3433414518",
-    }
-    verify_response = requests.post(
-        verify_url, data=json.dumps(verify_payload), headers=headers, timeout=10
+def clean_tag(tag):
+    normalized = "".join(
+        c for c in unicodedata.normalize("NFKD", tag) if unicodedata.category(c) != "Mn"
     )
-    verify_response.raise_for_status()
-    result = verify_response.json()
-    tags = result["list"].get("3433414518", {}).get("tags", {})
-    print("Verification:", tags)
-except requests.exceptions.RequestException as e:
-    print(f"Verification error: {e}")
+    unwanted = r"[°€?!@#$%^&*()+={}[\]|\\:;\"'<>,./\s]+"
+    cleaned = re.sub(unwanted, "-", normalized).lower().strip("-")
+    cleaned = re.sub(r"-+", "-", cleaned)
+    return cleaned if cleaned and len(cleaned) <= 50 else ""
+
+
+def is_single_noun(tag):
+    cleaned = clean_tag(tag)
+    doc = nlp(cleaned)
+    return len(doc) == 1 and doc[0].pos_ in {"NOUN", "PROPN"}
+
+
+def is_plural(tag):
+    doc = nlp(tag)
+    return (
+        len(doc) == 1 and doc[0].tag_ == "NN" and doc[0].morph.get("Number") == ["Plur"]
+    )
+
+
+def get_singular_form(tag):
+    doc = nlp(tag)
+    if is_plural(tag):
+        lemma = doc[0].lemma_
+        return lemma if nlp(lemma)[0].pos_ in {"NOUN", "PROPN"} else tag
+    return tag
+
+
+def consolidate_tags(tags):
+    tag_mapping = {
+        "abschiebeflieger": "abschiebeflug",
+        "abschiebeflüge": "abschiebeflug",
+        "abmahnagentur": "abmahnung",
+        "abkassieren": "abmahnung",
+        "§stgb": "stgb",
+        "°sound": "sound",
+        "€millionorder": "millionorder",
+        ":scale": "scale",
+    }
+    consolidated = {}
+    for tag in tags:
+        cleaned = clean_tag(tag)
+        if not cleaned or not is_single_noun(cleaned):
+            print(f"Skipping invalid tag '{tag}' → '{cleaned}'")
+            continue
+        if tag in tag_mapping:
+            consolidated[tag] = tag_mapping[tag]
+        elif cleaned in tag_mapping:
+            consolidated[tag] = tag_mapping[cleaned]
+        else:
+            if is_plural(cleaned):
+                singular = get_singular_form(cleaned)
+                if singular != cleaned and singular in tags:
+                    consolidated[tag] = singular
+                    print(f"Consolidated plural '{tag}' → '{singular}'")
+                else:
+                    consolidated[tag] = cleaned
+            else:
+                consolidated[tag] = cleaned
+    return consolidated
+
+
+def parse_pocket_csv(csv_file):
+    articles = []
+    with open(csv_file, "r", encoding="utf-8") as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            tags = row["tags"].split("|") if row["tags"] else []

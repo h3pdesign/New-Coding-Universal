@@ -3,6 +3,7 @@ import time
 import requests
 import re
 import json
+import unicodedata
 from pocket import Pocket
 from dotenv import load_dotenv
 from collections import defaultdict
@@ -19,7 +20,6 @@ if not all([POCKET_CONSUMER_KEY, POCKET_ACCESS_TOKEN, GROK_API_KEY]):
 
 pocket = Pocket(consumer_key=POCKET_CONSUMER_KEY, access_token=POCKET_ACCESS_TOKEN)
 
-# Expanded COMMON_TAGS to include German terms for better relevance
 COMMON_TAGS = {
     "technology",
     "technologie",
@@ -99,6 +99,7 @@ COMMON_TAGS = {
 TAG_CACHE_FILE = "pocket_tags_cache.json"
 GROK_TAG_CACHE_FILE = "grok_tag_cache.json"
 PROCESSED_IDS_FILE = "processed_ids.json"
+TAG_MAPPING_FILE = "tag_mapping.json"  # From cleaning script
 
 
 def load_existing_tags_from_cache():
@@ -109,6 +110,12 @@ def load_existing_tags_from_cache():
         return tags
     print("No tag cache found. Starting with empty tag set.")
     return set()
+
+
+def save_existing_tags_to_cache(tags):
+    with open(TAG_CACHE_FILE, "w") as f:
+        json.dump(list(tags), f)
+    print(f"Saved {len(tags)} existing tags to cache.")
 
 
 def load_grok_tag_cache():
@@ -137,6 +144,39 @@ def save_processed_ids(processed_ids):
     with open(PROCESSED_IDS_FILE, "w") as f:
         json.dump(list(processed_ids), f)
     print(f"Saved {len(processed_ids)} processed IDs to {PROCESSED_IDS_FILE}.")
+
+
+def load_tag_mapping():
+    if os.path.exists(TAG_MAPPING_FILE):
+        with open(TAG_MAPPING_FILE, "r") as f:
+            mapping = json.load(f)
+            print(
+                f"Loaded tag mapping with {len(mapping)} entries from {TAG_MAPPING_FILE}."
+            )
+            return mapping
+    print(
+        f"No tag mapping file found at {TAG_MAPPING_FILE}. Starting with empty mapping."
+    )
+    return {}
+
+
+def clean_tag(tag):
+    # Normalize diacritics to ASCII (e.g., über → uber)
+    normalized = "".join(
+        c for c in unicodedata.normalize("NFKD", tag) if unicodedata.category(c) != "Mn"
+    )
+    # Replace unwanted characters with hyphens, preserve existing hyphens
+    unwanted = r"[°€?!@#$%^&*()+={}[\]|\\:;\"'<>,./\s]+"  # Explicit unwanted chars
+    cleaned = re.sub(unwanted, "-", normalized).lower().strip("-")
+    # Replace multiple consecutive hyphens with a single hyphen
+    cleaned = re.sub(r"-+", "-", cleaned)
+    return cleaned if cleaned and len(cleaned) <= 50 else ""  # Pocket tag length limit
+
+
+def is_single_noun(tag):
+    cleaned = clean_tag(tag)
+    # Allow compound nouns, reject only specific non-noun suffixes
+    return not cleaned.endswith(("ly", "ed", "ing", "al", "ive"))
 
 
 def fetch_pocket_articles(max_articles=1000, processed_ids=None, offset_start=0):
@@ -200,9 +240,7 @@ def fetch_pocket_articles(max_articles=1000, processed_ids=None, offset_start=0)
                 break
             except Exception as e:
                 if "rate limiting" in str(e).lower() or "forbidden" in str(e).lower():
-                    delay = (
-                        3600 if attempt == 0 else 60 * (attempt + 1)
-                    )  # 1 hour on first hit
+                    delay = 3600 if attempt == 0 else 60 * (attempt + 1)
                     print(f"Rate limit hit: {str(e)}. Retrying in {delay} seconds...")
                     time.sleep(delay)
                     if attempt == retries - 1:
@@ -218,25 +256,18 @@ def fetch_pocket_articles(max_articles=1000, processed_ids=None, offset_start=0)
     return all_articles
 
 
-def clean_tag(tag):
-    # Preserve hyphens for compound words (e.g., Ballweg-Prozess)
-    return re.sub(r"[°€\W]+", "-", tag).lower().strip("-")
-
-
-def is_single_noun(tag):
-    cleaned = clean_tag(tag)
-    # Allow compound nouns, reject only specific non-noun suffixes
-    return not cleaned.endswith(("ly", "ed", "ing", "al", "ive"))
-
-
-def map_to_common_tags(grok_tags, common_tags, existing_tags):
+def map_to_common_tags(grok_tags, common_tags, existing_tags, tag_mapping):
     mapped_tags = set()
     for tag in grok_tags:
         cleaned_tag = clean_tag(tag)
         if cleaned_tag and is_single_noun(cleaned_tag):
-            # Allow new tags to be added dynamically to existing_tags
-            mapped_tags.add(cleaned_tag)
-            existing_tags.add(cleaned_tag)
+            # Apply consolidation mapping if available
+            canonical_tag = tag_mapping.get(cleaned_tag, cleaned_tag)
+            if canonical_tag in common_tags or canonical_tag in existing_tags:
+                mapped_tags.add(canonical_tag)
+            else:
+                mapped_tags.add(canonical_tag)
+                existing_tags.add(canonical_tag)
         else:
             print(f"Rejected tag '{cleaned_tag}' - invalid format")
     return list(mapped_tags) if mapped_tags else []
@@ -306,16 +337,21 @@ def get_tags_from_grok(content_or_title, grok_cache):
 
 
 def tag_pocket_articles(
-    article_tags_dict, processed_ids, common_tags, existing_tags, target_count=1000
+    article_tags_dict,
+    processed_ids,
+    common_tags,
+    existing_tags,
+    tag_mapping,
+    target_count=1000,
 ):
     tagged_count = 0
     for item_id, tags in article_tags_dict.items():
         if tagged_count >= target_count:
             break
-        mapped_tags = map_to_common_tags(tags, common_tags, existing_tags)
+        mapped_tags = map_to_common_tags(tags, common_tags, existing_tags, tag_mapping)
         if not mapped_tags:
             print(f"Skipping item {item_id}: No valid tags generated from {tags}")
-            continue  # Do NOT add to processed_ids here
+            continue
         tag_string = ",".join(mapped_tags)
         print(f"Tagging item {item_id} with tags: {tag_string}")
         retries = 3
@@ -324,7 +360,7 @@ def tag_pocket_articles(
                 pocket.tags_add(item_id, tag_string)
                 print(f"Tagged item {item_id} successfully.")
                 tagged_count += 1
-                processed_ids.add(item_id)  # Only add on successful tagging
+                processed_ids.add(item_id)
                 time.sleep(0.5)
                 break
             except Exception as e:
@@ -351,6 +387,7 @@ def automate_tagging():
     )
     grok_cache = load_grok_tag_cache()
     processed_ids = load_processed_ids()
+    tag_mapping = load_tag_mapping()
 
     batch_size = 1000
     offset = 0
@@ -372,7 +409,7 @@ def automate_tagging():
                 )
                 if title.lower() == "untitled":
                     print(f"Skipping item {item_id}: Title is 'Untitled'")
-                    continue  # Do NOT add to processed_ids
+                    continue
                 print(f"Processing: {title}")
                 grok_tags = get_tags_from_grok(title, grok_cache)
                 if grok_tags:
@@ -383,16 +420,19 @@ def automate_tagging():
                 processed_ids,
                 common_tags,
                 existing_tags,
+                tag_mapping,
                 target_count=batch_size,
             )
             total_tagged += tagged_count
             offset += len(articles)
             save_processed_ids(processed_ids)
+            save_existing_tags_to_cache(existing_tags)
             print(f"Total articles tagged so far: {total_tagged}")
         else:
             print("No articles tagged in this batch.")
             offset += len(articles)
             save_processed_ids(processed_ids)
+            save_existing_tags_to_cache(existing_tags)
 
         if len(articles) < batch_size:
             print(
