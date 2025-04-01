@@ -19,46 +19,81 @@ if not all([POCKET_CONSUMER_KEY, POCKET_ACCESS_TOKEN, GROK_API_KEY]):
 
 pocket = Pocket(consumer_key=POCKET_CONSUMER_KEY, access_token=POCKET_ACCESS_TOKEN)
 
+# Expanded COMMON_TAGS to include German terms for better relevance
 COMMON_TAGS = {
     "technology",
+    "technologie",
     "science",
+    "wissenschaft",
     "history",
+    "geschichte",
     "politics",
+    "politik",
     "health",
+    "gesundheit",
     "environment",
+    "umwelt",
     "business",
+    "wirtschaft",
     "education",
+    "bildung",
     "art",
+    "kunst",
     "culture",
+    "kultur",
     "sports",
+    "sport",
     "travel",
+    "reisen",
     "food",
+    "essen",
     "music",
+    "musik",
     "film",
     "literature",
+    "literatur",
     "economics",
+    "ökonomie",
     "security",
+    "sicherheit",
     "privacy",
+    "datenschutz",
     "innovation",
     "research",
+    "forschung",
     "data",
+    "daten",
     "software",
     "hardware",
     "ai",
+    "ki",
     "statistics",
+    "statistik",
     "energy",
+    "energie",
     "infrastructure",
+    "infrastruktur",
     "media",
+    "medien",
     "crime",
+    "kriminalität",
     "law",
+    "recht",
     "war",
+    "krieg",
     "space",
+    "raumfahrt",
     "archaeology",
+    "archäologie",
     "photography",
+    "fotografie",
     "gaming",
+    "spiele",
     "fashion",
+    "mode",
     "design",
     "productivity",
+    "produktivität",
 }
 
 TAG_CACHE_FILE = "pocket_tags_cache.json"
@@ -129,6 +164,7 @@ def fetch_pocket_articles(max_articles=1000, processed_ids=None, offset_start=0)
                     sort="newest",
                 )
                 articles = response[0].get("list", {})
+                print(f"Fetched {len(articles)} articles at offset {offset}")
                 untagged_articles = {}
                 for k, v in articles.items():
                     tags = v.get("tags", {})
@@ -183,24 +219,26 @@ def fetch_pocket_articles(max_articles=1000, processed_ids=None, offset_start=0)
 
 
 def clean_tag(tag):
-    return re.sub(r"[°€\W]+", "", tag).lower().strip()
+    # Preserve hyphens for compound words (e.g., Ballweg-Prozess)
+    return re.sub(r"[°€\W]+", "-", tag).lower().strip("-")
 
 
 def is_single_noun(tag):
     cleaned = clean_tag(tag)
-    return len(cleaned.split()) == 1 and not cleaned.endswith(
-        ("ly", "ed", "ing", "al", "ive")
-    )
+    # Allow compound nouns, reject only specific non-noun suffixes
+    return not cleaned.endswith(("ly", "ed", "ing", "al", "ive"))
 
 
 def map_to_common_tags(grok_tags, common_tags, existing_tags):
     mapped_tags = set()
     for tag in grok_tags:
         cleaned_tag = clean_tag(tag)
-        if is_single_noun(cleaned_tag):
+        if cleaned_tag and is_single_noun(cleaned_tag):
+            # Allow new tags to be added dynamically to existing_tags
             mapped_tags.add(cleaned_tag)
-        elif cleaned_tag:
-            print(f"Rejected tag '{cleaned_tag}' - not a single-word noun")
+            existing_tags.add(cleaned_tag)
+        else:
+            print(f"Rejected tag '{cleaned_tag}' - invalid format")
     return list(mapped_tags) if mapped_tags else []
 
 
@@ -222,7 +260,7 @@ def get_tags_from_grok(content_or_title, grok_cache):
         "messages": [
             {
                 "role": "system",
-                "content": "Return plain text single-word noun tags separated by commas, no adjectives or multi-word tags.",
+                "content": "Return plain text noun tags separated by commas. Tags can be single words or compound nouns (e.g., Ballweg-Prozess). No adjectives or multi-phrase tags.",
             },
             {
                 "role": "user",
@@ -277,7 +315,7 @@ def tag_pocket_articles(
         mapped_tags = map_to_common_tags(tags, common_tags, existing_tags)
         if not mapped_tags:
             print(f"Skipping item {item_id}: No valid tags generated from {tags}")
-            continue
+            continue  # Do NOT add to processed_ids here
         tag_string = ",".join(mapped_tags)
         print(f"Tagging item {item_id} with tags: {tag_string}")
         retries = 3
@@ -286,7 +324,7 @@ def tag_pocket_articles(
                 pocket.tags_add(item_id, tag_string)
                 print(f"Tagged item {item_id} successfully.")
                 tagged_count += 1
-                processed_ids.add(item_id)
+                processed_ids.add(item_id)  # Only add on successful tagging
                 time.sleep(0.5)
                 break
             except Exception as e:
@@ -334,8 +372,7 @@ def automate_tagging():
                 )
                 if title.lower() == "untitled":
                     print(f"Skipping item {item_id}: Title is 'Untitled'")
-                    processed_ids.add(item_id)
-                    continue
+                    continue  # Do NOT add to processed_ids
                 print(f"Processing: {title}")
                 grok_tags = get_tags_from_grok(title, grok_cache)
                 if grok_tags:
