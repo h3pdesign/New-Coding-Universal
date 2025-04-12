@@ -257,64 +257,46 @@ def tag_pocket_articles():
 
 
 def import_tagged_articles():
-    """Import tagged articles into Pocket with detailed error handling."""
     logging.info("Starting import of tagged articles into Pocket...")
     if not os.path.exists(TAGGED_EXPORT_FILE):
-        logging.error("%s not found. Cannot import articles.", TAGGED_EXPORT_FILE)
+        logging.error("%s not found.", TAGGED_EXPORT_FILE)
         return
 
-    try:
-        with open(TAGGED_EXPORT_FILE, "r", encoding="utf-8") as f:
-            articles = json.load(f)
-        logging.info(
-            "Loaded %d articles from %s for import.", len(articles), TAGGED_EXPORT_FILE
-        )
-    except Exception as e:
-        logging.error("Error loading %s: %s", TAGGED_EXPORT_FILE, str(e))
-        return
+    with open(TAGGED_EXPORT_FILE, "r", encoding="utf-8") as f:
+        articles = json.load(f)
+    logging.info("Loaded %d articles from %s.", len(articles), TAGGED_EXPORT_FILE)
 
-    if not articles:
-        logging.warning("No articles to import.")
-        return
+    actions = [
+        {"action": "add", "url": a["url"], "title": a["title"], "tags": a["tags"]}
+        for a in articles
+    ]
+    logging.info("Prepared %d actions.", len(actions))
 
-    actions = []
-    for i, article in enumerate(articles):
-        action = {
-            "action": "add",
-            "url": article["url"],
-            "title": article["title"],
-            "tags": article["tags"],
-        }
-        actions.append(action)
-    logging.info("Prepared %d actions for import.", len(actions))
-
-    # Test a single add
-    logging.info("Testing single article import...")
-    try:
-        test_action = actions[0]
-        response = pocket.add(
-            url=test_action["url"], title=test_action["title"], tags=test_action["tags"]
-        )
-        if isinstance(response, tuple):
-            data, headers = response
-        else:
-            data = response
-        if data.get("status") == 1:
-            logging.info("Single article import successful: %s", test_action["title"])
-        else:
-            logging.error("Single article import failed: %s", data)
-    except Exception as e:
-        logging.error("Single article import failed: %s", str(e))
-        return
-
-    # Bulk import all articles
     url = "https://getpocket.com/v3/send"
     headers = {"Content-Type": "application/json"}
     batch_size = 50
-    for i in range(0, len(actions), batch_size):
+    total_batches = (len(actions) + batch_size - 1) // batch_size
+
+    last_success = 0
+    try:
+        with open(LOG_FILE, "r") as log:
+            for line in reversed(log.readlines()):
+                if "Batch" in line and "successfully imported" in line:
+                    last_success = int(line.split("Batch")[1].split()[0])
+                    break
+        logging.info("Last successful batch: %d", last_success)
+    except:
+        logging.info("No prior log found, starting fresh.")
+
+    start_index = last_success * batch_size
+    for i in range(start_index, len(actions), batch_size):
+        batch_num = i // batch_size + 1
         batch = actions[i : i + batch_size]
         logging.info(
-            "Processing batch %d with %d articles...", i // batch_size + 1, len(batch)
+            "Processing batch %d of %d with %d articles...",
+            batch_num,
+            total_batches,
+            len(batch),
         )
         payload = {
             "consumer_key": POCKET_CONSUMER_KEY,
@@ -322,32 +304,26 @@ def import_tagged_articles():
             "actions": batch,
         }
         try:
-            logging.debug(
-                "Sending batch %d: %s",
-                i // batch_size + 1,
-                json.dumps(payload, ensure_ascii=False),
-            )
             response = requests.post(url, headers=headers, data=json.dumps(payload))
             data = response.json()
-            logging.debug("API response for batch %d: %s", i // batch_size + 1, data)
             if response.status_code == 200 and data.get("status") == 1:
                 logging.info(
-                    "Batch %d successfully imported %d articles.",
-                    i // batch_size + 1,
-                    len(batch),
+                    "Batch %d successfully imported %d articles.", batch_num, len(batch)
                 )
             else:
                 logging.error(
                     "Batch %d failed: HTTP %d, response: %s",
-                    i // batch_size + 1,
+                    batch_num,
                     response.status_code,
                     data,
                 )
-            time.sleep(1)  # Rate limiting
+                break
+            time.sleep(1)
         except Exception as e:
-            logging.error("Error importing batch %d: %s", i // batch_size + 1, str(e))
+            logging.error("Batch %d error: %s", batch_num, str(e))
+            break
 
-    logging.info("Import process completed.")
+    logging.info("Import completed. Processed up to batch %d.", batch_num)
 
 
 def main():
