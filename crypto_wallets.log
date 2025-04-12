@@ -1,0 +1,58 @@
+2025-04-11 14:39:00,082 - INFO - Starting script execution...
+2025-04-11 14:39:00,085 - INFO - Generated wallet table.
+2025-04-11 14:39:01,004 - INFO - Generated candlestick chart: xrp_usdt_chart.png
+2025-04-11 14:39:02,965 - INFO - Email sent successfully via iCloud!
+2025-04-11 14:39:02,965 - INFO - Script execution completed.
+2025-04-11 14:42:32,764 - INFO - Starting script execution...
+2025-04-11 14:42:32,767 - INFO - Generated wallet table.
+2025-04-11 14:42:33,190 - INFO - Generated candlestick chart: xrp_usdt_chart.png
+2025-04-11 14:42:35,378 - INFO - Email sent successfully via iCloud!
+2025-04-11 14:42:35,378 - INFO - Script execution completed.
+2025-04-11 14:45:08,822 - INFO - Starting script execution...
+2025-04-11 14:45:08,825 - INFO - Generated wallet table.
+2025-04-11 14:45:09,215 - INFO - Generated candlestick chart for wallet 1: wallet_1_chart.png
+2025-04-11 14:45:09,282 - INFO - Generated candlestick chart for wallet 2: wallet_2_chart.png
+2025-04-11 14:45:09,347 - INFO - Generated candlestick chart for wallet 3: wallet_3_chart.png
+2025-04-11 14:45:09,419 - INFO - Generated candlestick chart for wallet 4: wallet_4_chart.png
+2025-04-11 14:45:09,500 - INFO - Generated candlestick chart for wallet 5: wallet_5_chart.png
+2025-04-11 14:45:09,566 - INFO - Generated candlestick chart for wallet 6: wallet_6_chart.png
+2025-04-11 14:45:09,631 - INFO - Generated candlestick chart for wallet 7: wallet_7_chart.png
+2025-04-11 14:45:09,699 - INFO - Generated candlestick chart for wallet 8: wallet_8_chart.png
+2025-04-11 14:45:09,782 - INFO - Generated candlestick chart for wallet 9: wallet_9_chart.png
+2025-04-11 14:45:09,852 - INFO - Generated candlestick chart for wallet 10: wallet_10_chart.png
+2025-04-11 14:45:12,169 - INFO - Email sent successfully via iCloud!
+2025-04-11 14:45:12,170 - INFO - Deleted chart file: wallet_1_chart.png
+2025-04-11 14:45:12,170 - INFO - Deleted chart file: wallet_2_chart.png
+2025-04-11 14:45:12,170 - INFO - Deleted chart file: wallet_3_chart.png
+2025-04-11 14:45:12,170 - INFO - Deleted chart file: wallet_4_chart.png
+2025-04-11 14:45:12,170 - INFO - Deleted chart file: wallet_5_chart.png
+2025-04-11 14:45:12,170 - INFO - Deleted chart file: wallet_6_chart.png
+2025-04-11 14:45:12,170 - INFO - Deleted chart file: wallet_7_chart.png
+2025-04-11 14:45:12,170 - INFO - Deleted chart file: wallet_8_chart.png
+2025-04-11 14:45:12,170 - INFO - Deleted chart file: wallet_9_chart.png
+2025-04-11 14:45:12,170 - INFO - Deleted chart file: wallet_10_chart.png
+2025-04-11 14:45:12,170 - INFO - Script execution completed.
+2025-04-11 14:59:44,707 - INFO - Starting script execution...
+2025-04-11 14:59:44,710 - INFO - Generated wallet table.
+2025-04-11 14:59:45,080 - INFO - Generated candlestick chart for wallet 1: wallet_1_chart.png
+2025-04-11 14:59:45,170 - INFO - Generated candlestick chart for wallet 2: wallet_2_chart.png
+2025-04-11 14:59:45,241 - INFO - Generated candlestick chart for wallet 3: wallet_3_chart.png
+2025-04-11 14:59:45,319 - INFO - Generated candlestick chart for wallet 4: wallet_4_chart.png
+2025-04-11 14:59:45,408 - INFO - Generated candlestick chart for wallet 5: wallet_5_chart.png
+2025-04-11 14:59:45,486 - INFO - Generated candlestick chart for wallet 6: wallet_6_chart.png
+2025-04-11 14:59:45,560 - INFO - Generated candlestick chart for wallet 7: wallet_7_chart.png
+2025-04-11 14:59:45,647 - INFO - Generated candlestick chart for wallet 8: wallet_8_chart.png
+2025-04-11 14:59:45,781 - INFO - Generated candlestick chart for wallet 9: wallet_9_chart.png
+2025-04-11 14:59:45,873 - INFO - Generated candlestick chart for wallet 10: wallet_10_chart.png
+2025-04-11 14:59:48,061 - INFO - Email sent successfully via iCloud!
+2025-04-11 14:59:48,061 - INFO - Deleted chart file: wallet_1_chart.png
+2025-04-11 14:59:48,061 - INFO - Deleted chart file: wallet_2_chart.png
+2025-04-11 14:59:48,061 - INFO - Deleted chart file: wallet_3_chart.png
+2025-04-11 14:59:48,061 - INFO - Deleted chart file: wallet_4_chart.png
+2025-04-11 14:59:48,061 - INFO - Deleted chart file: wallet_5_chart.png
+2025-04-11 14:59:48,061 - INFO - Deleted chart file: wallet_6_chart.png
+2025-04-11 14:59:48,061 - INFO - Deleted chart file: wallet_7_chart.png
+2025-04-11 14:59:48,061 - INFO - Deleted chart file: wallet_8_chart.png
+2025-04-11 14:59:48,062 - INFO - Deleted chart file: wallet_9_chart.png
+2025-04-11 14:59:48,062 - INFO - Deleted chart file: wallet_10_chart.png
+2025-04-11 14:59:48,062 - INFO - Script execution completed.
