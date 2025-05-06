@@ -1,0 +1,10 @@
+2025-05-05 18:21:55,280 - INFO - Starting Pocket access token generation...
+2025-05-05 18:21:55,514 - INFO - Received request token: cd4777f0-db97-6535-0dc0-11684a
+2025-05-05 18:23:02,310 - ERROR - Error requesting access token: 500 Server Error: Internal Server Error for url: https://getpocket.com/v3/oauth/authorize
+2025-05-05 18:23:34,459 - INFO - Starting Pocket access token generation...
+2025-05-05 18:23:34,703 - INFO - Received request token: 3e91ab11-c7ee-8c7e-36b3-d52432
+2025-05-05 18:23:44,075 - INFO - Starting Pocket access token generation...
+2025-05-05 18:23:44,433 - INFO - Received request token: 8fbfd71e-e0fc-ffa6-dd98-3237a7
+2025-05-05 18:24:12,002 - INFO - Received access token for user: hwr.pedersen@gmail.com
+2025-05-05 18:24:12,004 - INFO - Updated .env file with POCKET_ACCESS_TOKEN.
+2025-05-05 18:24:12,004 - INFO - Pocket access token generation completed successfully.
