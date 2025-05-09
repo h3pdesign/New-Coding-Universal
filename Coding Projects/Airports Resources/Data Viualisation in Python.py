@@ -9,34 +9,34 @@ from IPython.display import SVG
 import pygal
 import pandas as pd
 import numpy as np
-import seaborn
+import seaborn as sns
 import matplotlib.pyplot as plt
 import math
 
 
 # Read in the airports data.
-airports = ["id", "name", "city", "country", "code", "icao",
+airports_columns = ["id", "name", "city", "country", "code", "icao",
             "latitude", "longitude", "altitude", "offset", "dst", "timezone"]
 airports = pd.read_csv(
-    "Python & Web Projects/Airports Resources/airports.csv", sep=",", header=None, dtype=str, names=airports)
+    "Coding Projects/Airports Resources/airports.csv", sep=",", header=None, dtype=str, names=airports)
 
 # Read in the airlines data.
-airlines = ["id", "name", "alias", "iata",
+airlines_columns = ["id", "name", "alias", "iata",
             "icao", "callsign", "country", "active"]
 airlines = pd.read_csv(
-    "Python & Web Projects/Airports Resources/airlines.csv", sep=",", header=None, dtype=str, names=airlines)
+    "Coding Projects/Airports Resources/airports.csv", sep=",", header=None, dtype=str, names=airlines)
 
 # Read in the routes data.
-routes = ["airline", "airline_id", "source", "source_id",
+routes_columns = ["airline", "airline_id", "source", "source_id",
           "dest", "dest_id", "codeshare", "stops", "equipment"]
 routes = pd.read_csv(
-    "Python & Web Projects/Airports Resources//routes.csv", sep=",", header=None, dtype=str, names=routes)
+    "Coding Projects/Airports Resources/routes.csv", sep=",", header=None, dtype=str, names=routes)
 
 routes = routes[routes["airline_id"] != "\\N"]
 
-airports.head()
-airlines.head()
-routes.head()
+print(airports.head())
+print(airlines.head())
+print(routes.head())
 
 # %%
 # Exploring the dataset test2
