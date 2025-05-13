@@ -5,8 +5,11 @@ pocket_instance = pocket.Pocket(
     access_token="db05967f-c174-c500-a513-e55458",
 )
 try:
-    response = pocket_instance.get(count=1, detailType="complete", state="all")
-    print(response)
+    response = pocket_instance.get(
+        count=5, offset=0, detailType="complete", state="all"
+    )
+    print(f"Full response: {response}")
+    print(f"Articles: {response[0].get('list', {})}")
 except pocket.RateLimitException as e:
     print(f"Rate limit error: {str(e)}")
 except Exception as e:
