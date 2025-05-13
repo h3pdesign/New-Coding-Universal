@@ -1,64 +1,95 @@
 import os
 import time
-import requests
-import re
-import json
 import logging
-import argparse
-import pocket
+import sys
+from pocket import Pocket
 from dotenv import load_dotenv
 from collections import defaultdict
-from hashlib import md5
+import json
 
-# Configure logging
-logging.basicConfig(
-    filename="pocket_tagging.log",
-    level=logging.INFO,
-    format="%(asctime)s - %(levelname)s - %(message)s",
+# Configure logging with file and stderr handlers
+logger = logging.getLogger()
+logger.setLevel(logging.INFO)
+
+file_handler = logging.FileHandler("pocket_tagging.log")
+file_handler.setFormatter(
+    logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
 )
+logger.addHandler(file_handler)
 
-# Load environment variables from .env file
-load_dotenv()
+stream_handler = logging.StreamHandler(sys.stderr)
+stream_handler.setFormatter(
+    logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
+)
+logger.addHandler(stream_handler)
+
+logging.info("Logging initialized")
+
+# Load environment variables
+env_path = "/Users/h3p/Coding/New-Coding-Universal/Coding Projects/Pocket Tagging/.env"
+load_dotenv(env_path)
+logging.info(f"Loaded .env from: {env_path}")
+
 POCKET_CONSUMER_KEY = os.getenv("POCKET_CONSUMER_KEY")
 POCKET_ACCESS_TOKEN = os.getenv("POCKET_ACCESS_TOKEN")
 GROK_API_KEY = os.getenv("GROK_API_KEY")
-GROK_API_URL = "https://api.x.ai/v1/chat/completions"
 
 if not all([POCKET_CONSUMER_KEY, POCKET_ACCESS_TOKEN, GROK_API_KEY]):
     logging.error("Missing required environment variables. Check your .env file.")
     raise ValueError("Missing required environment variables. Check your .env file.")
 
-pocket_instance = pocket.Pocket(
+logging.info(f"Using POCKET_CONSUMER_KEY: {POCKET_CONSUMER_KEY[:10]}...")
+logging.info(f"Using POCKET_ACCESS_TOKEN: {POCKET_ACCESS_TOKEN[:10]}...")
+
+pocket_instance = Pocket(
     consumer_key=POCKET_CONSUMER_KEY, access_token=POCKET_ACCESS_TOKEN
 )
 
-# Organized common tags by category
-COMMON_TAGS = {
-    "tech": ["technology", "software", "hardware", "ai", "data", "innovation"],
-    "science": ["science", "research", "space", "energy", "environment"],
-    "culture": ["art", "music", "film", "literature", "fashion", "culture"],
-    "society": ["politics", "economics", "law", "crime", "education"],
-    "lifestyle": ["health", "travel", "food", "sports", "productivity"],
-}
-FLAT_COMMON_TAGS = set(tag for category in COMMON_TAGS.values() for tag in category)
 
-TAG_CACHE_FILE = "pocket_tags_cache.json"
-GROK_TAG_CACHE_FILE = "grok_tag_cache.json"
-PROCESSED_IDS_FILE = "processed_ids.json"
+# Simulated Grok API response (replace with actual Grok API call)
+def generate_tags_with_grok(title, excerpt, url):
+    """Simulate Grok API to generate tags based on article content."""
+    # This is a placeholder. In production, call the xAI Grok API with GROK_API_KEY.
+    # Example: Send title, excerpt, URL to Grok and parse response for tags.
+    content = f"{title} {excerpt}".lower()
+    general_tags = []
+    specific_tag = ""
+
+    # General tag rules (one-word, broad categories)
+    if any(word in content for word in ["news", "politics", "election", "government"]):
+        general_tags.extend(["news", "politics"])
+    elif any(word in content for word in ["tech", "technology", "ai", "software"]):
+        general_tags.extend(["tech", "innovation"])
+    elif any(word in content for word in ["science", "research", "study"]):
+        general_tags.extend(["science", "research"])
+    else:
+        general_tags.extend(["misc", "article"])
+
+    # Specific tag (multi-word, descriptive)
+    if "ai" in content or "artificial intelligence" in content:
+        specific_tag = "artificial intelligence"
+    elif "climate" in content or "environment" in content:
+        specific_tag = "climate change"
+    elif "design" in content or "apple" in content:
+        specific_tag = "product design"
+    else:
+        specific_tag = "general topic"
+
+    # Ensure unique tags and at least 3
+    tags = list(set(general_tags[:2] + [specific_tag]))
+    if len(tags) < 3:
+        tags.append("content")
+    logging.info(f"Generated tags for '{title}': {tags}")
+    return tags
 
 
-def load_existing_tags_from_cache():
-    if os.path.exists(TAG_CACHE_FILE):
-        with open(TAG_CACHE_FILE, "r") as f:
-            tags = set(json.load(f))
-        logging.info(f"Loaded {len(tags)} existing tags from cache.")
-        return tags
-    logging.info("No tag cache found. Fetching existing tags from Pocket...")
+def fetch_articles_to_tag():
+    """Fetch articles with fewer than 3 tags."""
+    logging.info("Fetching articles with fewer than 3 tags...")
     all_articles = {}
     offset = 0
-    count = 100
+    count = 50
     retries = 5
-    existing_tags = set()
 
     while True:
         for attempt in range(retries):
@@ -66,260 +97,29 @@ def load_existing_tags_from_cache():
                 response = pocket_instance.get(
                     count=count, offset=offset, detailType="complete", state="all"
                 )
-                logging.info(f"Pocket API response for tags: {response}")
-                articles = response[0].get("list", {})
-                all_articles.update(articles)
-                for article in articles.values():
-                    existing_tags.update(article.get("tags", {}).keys())
-                if len(articles) < count:
-                    break
-                offset += count
-                logging.info(f"Fetched {len(all_articles)} articles (Offset: {offset})")
-                time.sleep(2)
-                break
-            except pocket.RateLimitException as e:
-                delay = 60 * (attempt + 1)
-                logging.warning(f"Rate limit hit: {str(e)}. Retrying in {delay}s...")
-                time.sleep(delay)
-            except Exception as e:
-                delay = 5 * (attempt + 1)
-                logging.error(f"Pocket API error: {str(e)}. Retrying in {delay}s...")
-                time.sleep(delay)
-                if "401" in str(e) or "403" in str(e):
-                    logging.error(
-                        "Authentication error. Check POCKET_CONSUMER_KEY and POCKET_ACCESS_TOKEN."
-                    )
-                    raise
-        if len(articles) < count:
-            break
-
-    with open(TAG_CACHE_FILE, "w") as f:
-        json.dump(list(existing_tags), f)
-    logging.info(f"Cached {len(existing_tags)} existing tags.")
-    return existing_tags
-
-
-def load_grok_tag_cache():
-    if os.path.exists(GROK_TAG_CACHE_FILE):
-        with open(GROK_TAG_CACHE_FILE, "r") as f:
-            cache = json.load(f)
-            logging.info(f"Loaded Grok tag cache with {len(cache)} entries.")
-            return cache
-    return {}
-
-
-def save_grok_tag_cache(cache):
-    with open(GROK_TAG_CACHE_FILE, "w") as f:
-        json.dump(cache, f)
-    logging.info("Saved Grok tag cache.")
-
-
-def load_processed_ids():
-    if os.path.exists(PROCESSED_IDS_FILE):
-        with open(PROCESSED_IDS_FILE, "r") as f:
-            ids = set(json.load(f))
-            logging.info(f"Loaded {len(ids)} processed IDs.")
-            return ids
-    return set()
-
-
-def save_processed_ids(processed_ids):
-    with open(PROCESSED_IDS_FILE, "w") as f:
-        json.dump(list(processed_ids), f)
-    logging.info(f"Saved {len(processed_ids)} processed IDs.")
-
-
-def fetch_pocket_articles(
-    max_articles=100, processed_ids=None, offset_start=0, force_all=False
-):
-    if processed_ids is None:
-        processed_ids = set()
-    logging.info(
-        f"Fetching up to {max_articles} articles from offset {offset_start} (force_all={force_all})..."
-    )
-    all_articles = {}
-    offset = offset_start
-    count = 50  # Reduced batch size
-    retries = 5
-
-    fetch_params = {
-        "count": count,
-        "offset": offset,
-        "detailType": "complete",
-        "state": "all",
-    }
-    if not force_all:
-        fetch_params["tag"] = "_untagged_"
-        fetch_type = "untagged"
-    else:
-        fetch_type = "all"
-
-    while len(all_articles) < max_articles:
-        for attempt in range(retries):
-            try:
-                remaining = max_articles - len(all_articles)
-                fetch_count = min(count, remaining)
-                fetch_params["count"] = fetch_count
-                fetch_params["offset"] = offset
+                logging.info(f"Raw API response (offset={offset}): {response}")
+                if not isinstance(response, tuple) or len(response) < 1:
+                    logging.error(f"Invalid API response format: {response}")
+                    raise ValueError(f"Invalid API response format: {response}")
+                response_data = response[0]
+                articles = response_data.get("list", {})
+                if not isinstance(articles, dict):
+                    logging.error(f"Unexpected 'list' format: {articles}")
+                    raise ValueError(f"Unexpected 'list' format: {articles}")
+                # Filter articles with fewer than 3 tags
+                for item_id, article in articles.items():
+                    if len(article.get("tags", {})) < 3:
+                        all_articles[item_id] = article
                 logging.info(
-                    f"Fetching {fetch_count} {fetch_type} articles at offset {offset}..."
+                    f"Fetched {len(articles)} articles at offset {offset}. Total to tag: {len(all_articles)}"
                 )
-                response = pocket_instance.get(**fetch_params)
-                logging.info(f"Pocket API response ({fetch_type}): {response}")
-                articles = response[0].get("list", {})
-                filtered_articles = {
-                    k: v for k, v in articles.items() if k not in processed_ids
-                }
-                all_articles.update(filtered_articles)
-                if len(articles) < fetch_count:
+                if len(articles) == 0:
                     logging.info(
-                        f"Finished fetching {fetch_type}. Total: {len(all_articles)}"
+                        f"No more articles to fetch. Total to tag: {len(all_articles)}"
                     )
-                    break
-                offset += fetch_count
-                time.sleep(3)  # Increased delay
-                break
-            except pocket.RateLimitException as e:
-                delay = 120 * (attempt + 1)  # Longer delay for rate limits
-                logging.warning(f"Rate limit hit: {str(e)}. Retrying in {delay}s...")
-                print(f"Rate limit hit. Waiting {delay} seconds before retrying...")
-                time.sleep(delay)
-            except Exception as e:
-                delay = 5 * (attempt + 1)
-                logging.error(f"Pocket API error: {str(e)}. Retrying in {delay}s...")
-                time.sleep(delay)
-                if "401" in str(e) or "403" in str(e):
-                    logging.error(
-                        "Authentication or permission error. Check POCKET_CONSUMER_KEY and POCKET_ACCESS_TOKEN."
-                    )
-                    print(
-                        "Authentication or permission error. Regenerate POCKET_ACCESS_TOKEN with full permissions."
-                    )
-                    raise
-        if len(articles) < fetch_count:
-            break
-
-    if not all_articles and not force_all:
-        logging.info("No untagged articles found. Fetching all articles as fallback...")
-        return fetch_pocket_articles(
-            max_articles, processed_ids, offset_start, force_all=True
-        )
-
-    logging.info(f"Fetched {len(all_articles)} articles total.")
-    return all_articles
-
-
-def clean_tag(tag):
-    return re.sub(r"[°€\W]+", "", tag).lower().strip()
-
-
-def is_single_noun(tag):
-    cleaned = clean_tag(tag)
-    return len(cleaned.split()) == 1
-
-
-def map_to_common_tags(grok_tags, common_tags, existing_tags):
-    mapped_tags = set()
-    for tag in grok_tags:
-        cleaned_tag = clean_tag(tag)
-        if is_single_noun(cleaned_tag):
-            if cleaned_tag in common_tags:
-                mapped_tags.add(cleaned_tag)
-            elif cleaned_tag in existing_tags:
-                mapped_tags.add(cleaned_tag)
-            else:
-                for category, tags in COMMON_TAGS.items():
-                    if cleaned_tag in tags or any(
-                        cleaned_tag.startswith(t) for t in tags
-                    ):
-                        mapped_tags.add(next(t for t in tags if t in common_tags))
-                        break
-    return list(mapped_tags)[:5]
-
-
-def get_tags_from_grok(content_or_title, grok_cache):
-    cache_key = md5(content_or_title.encode()).hexdigest()
-    if cache_key in grok_cache:
-        logging.info(f"Using cached tags for: {content_or_title[:50]}")
-        return grok_cache[cache_key]
-
-    headers = {
-        "Authorization": f"Bearer {GROK_API_KEY}",
-        "Content-Type": "application/json",
-    }
-    payload = {
-        "model": "grok-3",
-        "messages": [
-            {
-                "role": "system",
-                "content": "Return 3-5 single-word noun tags (no adjectives, adverbs, verbs, or multi-word phrases) separated by commas.",
-            },
-            {
-                "role": "user",
-                "content": f"Generate 3-5 relevant tags for: {content_or_title}",
-            },
-        ],
-        "max_tokens": 50,
-        "temperature": 0.7,
-    }
-    retries = 3
-    for attempt in range(retries):
-        try:
-            time.sleep(1)
-            response = requests.post(
-                GROK_API_URL, headers=headers, json=payload, timeout=10
-            )
-            response.raise_for_status()
-            tags_text = (
-                response.json()
-                .get("choices", [{}])[0]
-                .get("message", {})
-                .get("content", "")
-                .strip()
-            )
-            tags = [tag.strip() for tag in tags_text.split(",")] if tags_text else []
-            logging.info(f"Grok-generated tags for '{content_or_title[:50]}': {tags}")
-            grok_cache[cache_key] = tags
-            save_grok_tag_cache(grok_cache)
-            return tags
-        except requests.exceptions.HTTPError as e:
-            if e.response.status_code == 429:
-                delay = 10 * (attempt + 1)
-                logging.warning(
-                    f"Grok API rate limit hit, retrying in {delay}s... (Attempt {attempt + 1}/{retries})"
-                )
-                time.sleep(delay)
-            else:
-                logging.error(f"Grok API error: {str(e)}")
-                return []
-        except requests.exceptions.RequestException as e:
-            logging.error(f"Grok request error: {str(e)}")
-            return []
-    return []
-
-
-def tag_pocket_articles(
-    article_tags_dict, processed_ids, common_tags, existing_tags, target_count=100
-):
-    tagged_count = 0
-    for item_id, tags in article_tags_dict.items():
-        if tagged_count >= target_count:
-            break
-        mapped_tags = map_to_common_tags(tags, common_tags, existing_tags)
-        if not mapped_tags:
-            logging.warning(f"Skipping item {item_id}: No valid tags generated.")
-            continue
-        tag_string = ",".join(mapped_tags)
-        logging.info(f"Tagging item {item_id} with tags: {tag_string}")
-        retries = 3
-        for attempt in range(retries):
-            try:
-                pocket_instance.tags_add(item_id, tag_string)
-                processed_ids.add(item_id)
-                save_processed_ids(processed_ids)
-                tagged_count += 1
-                logging.info(f"Tagged item {item_id} successfully.")
-                time.sleep(3)  # Increased delay
+                    return all_articles
+                offset += count
+                time.sleep(3)
                 break
             except pocket.RateLimitException as e:
                 delay = 120 * (attempt + 1)
@@ -327,32 +127,104 @@ def tag_pocket_articles(
                 print(f"Rate limit hit. Waiting {delay} seconds before retrying...")
                 time.sleep(delay)
             except Exception as e:
-                logging.error(f"Error tagging item {item_id}: {str(e)}")
+                delay = 5 * (attempt + 1)
+                logging.error(
+                    f"Pocket API error (attempt {attempt + 1}/{retries}, offset={offset}): {str(e)}"
+                )
+                time.sleep(delay)
+                if "401" in str(e) or "403" in str(e):
+                    logging.error(
+                        "Authentication or permission error. Check POCKET_CONSUMER_KEY and POCKET_ACCESS_TOKEN."
+                    )
+                    raise
+        else:
+            logging.error(
+                f"Failed to fetch articles after {retries} attempts at offset {offset}."
+            )
+            raise ValueError(f"Failed to fetch articles after {retries} attempts.")
+
+
+def get_existing_tags(articles):
+    """Get all existing tags and their article counts."""
+    tag_counts = defaultdict(int)
+    for item_id, article in articles.items():
+        for tag in article.get("tags", {}):
+            tag_counts[tag] += 1
+    logging.info(f"Existing tags: {dict(tag_counts)}")
+    return tag_counts
+
+
+def tag_articles(articles):
+    """Tag articles with at least 3 tags: 2 general (one-word), 1 specific (multi-word)."""
+    existing_tags = get_existing_tags(articles)
+    tagged_count = 0
+    retries = 5
+
+    for item_id, article in articles.items():
+        current_tags = list(article.get("tags", {}).keys())
+        if len(current_tags) >= 3:
+            logging.info(
+                f"Article {item_id} already has {len(current_tags)} tags: {current_tags}. Skipping."
+            )
+            continue
+
+        title = article.get("resolved_title", article.get("given_title", ""))
+        excerpt = article.get("excerpt", "")
+        url = article.get("resolved_url", article.get("given_url", ""))
+        logging.info(f"Processing article {item_id}: {title}")
+
+        # Generate new tags
+        new_tags = generate_tags_with_grok(title, excerpt, url)
+        # Prefer existing tags to minimize single-article tags
+        final_tags = []
+        for tag in new_tags:
+            # Use existing tag if similar and reusable (not single-article)
+            for existing_tag, count in existing_tags.items():
+                if tag.lower() in existing_tag.lower() and count > 1:
+                    final_tags.append(existing_tag)
+                    break
+            else:
+                final_tags.append(tag)
+        # Ensure at least 3 tags
+        final_tags = list(set(final_tags + current_tags))
+        if len(final_tags) < 3:
+            final_tags.append("content")
+        if len(final_tags) < 3:
+            final_tags.append("article")
+
+        # Apply tags
+        for attempt in range(retries):
+            try:
+                pocket_instance.tags_add(item_id, final_tags)
+                logging.info(f"Added tags to article {item_id}: {final_tags}")
+                tagged_count += 1
+                # Update existing tags
+                for tag in final_tags:
+                    existing_tags[tag] += 1
+                time.sleep(3)
+                break
+            except pocket.RateLimitException as e:
+                delay = 120 * (attempt + 1)
+                logging.warning(f"Rate limit hit: {str(e)}. Retrying in {delay}s...")
+                print(f"Rate limit hit. Waiting {delay} seconds before retrying...")
+                time.sleep(delay)
+            except Exception as e:
+                logging.error(f"Error tagging article {item_id}: {str(e)}")
                 if "401" in str(e) or "403" in str(e):
                     print(
-                        "Authentication or permission error. Regenerate POCKET_ACCESS_TOKEN with full permissions."
+                        "Authentication or permission error. Regenerate POCKET_ACCESS_TOKEN."
                     )
                     raise
                 break
+
     logging.info(f"Tagged {tagged_count} articles.")
     return tagged_count
 
 
 def main():
-    parser = argparse.ArgumentParser(
-        description="Tag Pocket articles with Grok-generated tags."
-    )
-    parser.add_argument(
-        "--force-all",
-        action="store_true",
-        help="Force fetch all articles, not just untagged.",
-    )
-    args = parser.parse_args()
-
     logging.info("Script started")
     logging.info(f"Consumer Key: {POCKET_CONSUMER_KEY[:10]}...")
     logging.info(f"Access Token: {POCKET_ACCESS_TOKEN[:10]}...")
-    logging.info(f"Force all articles: {args.force_all}")
 
     # Test Pocket API connectivity
     try:
@@ -362,87 +234,30 @@ def main():
     except pocket.RateLimitException as e:
         logging.error(f"Rate limit exceeded: {str(e)}")
         print(
-            "Pocket API rate limit exceeded. Please wait at least 1 hour (e.g., until after 11:00 AM on May 5, 2025) and try again."
-        )
-        print(
-            "Alternatively, reduce API calls by setting max_articles_per_run lower in the script."
-        )
-        print(
-            "To ensure full permissions, regenerate POCKET_ACCESS_TOKEN using get_pocket_access_token.py."
+            "Pocket API rate limit exceeded. Please wait at least 1 hour (e.g., until after 2:16 PM on May 13, 2025) and try again."
         )
         return
     except Exception as e:
         logging.error(f"Pocket API connectivity test failed: {str(e)}")
         print(f"Error connecting to Pocket API: {str(e)}.")
-        if "401" in str(e) or "403" in str(e):
-            print(
-                "Authentication or permission error. Regenerate POCKET_ACCESS_TOKEN with full permissions using get_pocket_access_token.py."
-            )
-        else:
-            print("Check Pocket API status or try again later.")
         return
 
-    existing_tags = load_existing_tags_from_cache()
-    common_tags = FLAT_COMMON_TAGS.union(
-        {tag for tag in existing_tags if is_single_noun(tag)}
-    )
-    grok_cache = load_grok_tag_cache()
-    processed_ids = load_processed_ids()
+    # Fetch articles to tag
+    try:
+        articles = fetch_articles_to_tag()
+    except Exception as e:
+        logging.error(f"Failed to fetch articles: {str(e)}")
+        print(f"Error fetching articles: {str(e)}")
+        return
 
-    max_articles_per_run = 100  # Reduced to stay within rate limits
-    offset = 0
-
-    articles = fetch_pocket_articles(
-        max_articles=max_articles_per_run,
-        processed_ids=processed_ids,
-        offset_start=offset,
-        force_all=args.force_all,
-    )
     if not articles:
-        logging.warning("No articles fetched.")
-        print("No articles found. Try the following:")
-        print(
-            "1. Add untagged articles to your Pocket account (save a webpage without tags)."
-        )
-        print(
-            "2. Run with --force-all to process all articles: python script.py --force-all"
-        )
-        print("3. Reset cache files: mv *.json backup/")
-        print("4. Verify POCKET_CONSUMER_KEY and POCKET_ACCESS_TOKEN in .env.")
-        print("Check pocket_tagging.log for detailed API responses.")
+        logging.warning("No articles with fewer than 3 tags found.")
+        print("No articles need tagging. Verify your Pocket account at getpocket.com.")
         return
 
-    article_tags = {}
-    for item_id, article in articles.items():
-        if item_id in processed_ids:
-            continue
-        title = article.get("resolved_title", article.get("given_title", ""))
-        excerpt = article.get("excerpt", "")
-        url = article.get("resolved_url", article.get("given_url", ""))
-        content = title or excerpt or url
-        if not content:
-            logging.warning(f"Skipping item {item_id}: No usable content")
-            processed_ids.add(item_id)
-            save_processed_ids(processed_ids)
-            continue
-        logging.info(f"Processing: {content[:50]}...")
-        grok_tags = get_tags_from_grok(content, grok_cache)
-        if grok_tags:
-            article_tags[item_id] = grok_tags
-
-    if article_tags:
-        tagged_count = tag_pocket_articles(
-            article_tags,
-            processed_ids,
-            common_tags,
-            existing_tags,
-            target_count=max_articles_per_run,
-        )
-        logging.info(f"Next offset: {offset + tagged_count}")
-        print(f"Tagged {tagged_count} articles. Next offset: {offset + tagged_count}")
-    else:
-        logging.warning("No tags generated for articles.")
-        print("No tags generated. Check Grok API or article content.")
+    # Tag articles
+    tagged_count = tag_articles(articles)
+    print(f"Tagged {tagged_count} articles with at least 3 tags each.")
 
     logging.info("Script finished")
     print("Script finished")
