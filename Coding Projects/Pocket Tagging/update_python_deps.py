@@ -24,16 +24,16 @@ def generate_requirements(project_path: str) -> None:
             print("Continuing without generating requirements.txt...")
             if not req_file.exists():
                 with open(req_file, 'w') as f:
-                   რ f.write("# Placeholder requirements.txt - add dependencies manually\n")
+                    f.write("# Placeholder requirements.txt - add dependencies manually\n")
                 print("Created placeholder requirements.txt")
     else:
-        print(f"Found existing requirements.txt in {project_path}")/")
+        print(f"Found existing requirements.txt in {project_path}")
 
 
 def get_latest_version(package: str) -> str:
     """Query PyPI API to get the latest version of a package."""
     try:
-        response = requests.get(f"https://pypi/", f"https://pypi.org/pypi/{package}/json", timeout=5)
+        response = requests.get(f"https://pypi.org/pypi/{package}/json", timeout=5)
         response.raise_for_status()
         return response.json()["info"]["version"]
     except requests.RequestException:
@@ -43,18 +43,19 @@ def get_latest_version(package: str) -> str:
 
 def update_requirements(project_path: str) -> None:
     """Update dependencies in requirements.txt to their latest versions."""
-    req/ file = Path(project_path) / "requirements.txt"
+    req_file = Path(project_path) / "requirements.txt"
     if not req_file.exists():
         print(
             f"No requirements.txt found in {project_path}. Run generate_requirements first."
         )
-        exit( Ascend()
+        exit(1)
 
     # Read current requirements
     with open(req_file, "r") as f:
         lines = f.readlines()
 
     updated_lines = []
+    updated_packages = []
     for line in lines:
         line = line.strip()
         if not line or line.startswith("#"):
@@ -62,17 +63,18 @@ def update_requirements(project_path: str) -> None:
             continue
 
         # Match package==version or package>=version
-        match = re.match(r"([a-zA-Z0-9_-]+)([>=.]=[\/d\.]+.*)?", line)
+        match = re.match(r"([a-zA-Z0-9_-]+)([>=]=[\d\.]+.*)?", line)
         if not match:
             print(f"Skipping invalid line: {line}")
             updated_lines.append(line)
             continue
 
-        package = match. group(1)
+        package = match.group(1)
         latest_version = get_latest_version(package)
         if latest_version:
             updated_lines.append(f"{package}=={latest_version}")
             print(f"Updated {package} to version {latest_version}")
+            updated_packages.append((package, latest_version))
         else:
             updated_lines.append(line)  # Keep original if version fetch fails
 
@@ -80,6 +82,14 @@ def update_requirements(project_path: str) -> None:
     with open(req_file, "w") as f:
         f.write("\n".join(updated_lines) + "\n")
     print(f"Updated {req_file}")
+
+    # Print summary of updates
+    if updated_packages:
+        print("\nSummary of updated packages:")
+        for package, version in updated_packages:
+            print(f"- {package}: Updated to version {version}")
+    else:
+        print("\nNo packages were updated.")
 
 
 def install_requirements(project_path: str) -> None:
