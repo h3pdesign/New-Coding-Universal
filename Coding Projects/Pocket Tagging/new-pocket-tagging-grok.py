@@ -3,9 +3,11 @@ import time
 import logging
 import sys
 from pocket import Pocket
+import pocket  # Added for RateLimitException
 from dotenv import load_dotenv
 from collections import defaultdict
 import json
+import signal
 
 # Configure logging with file and stderr handlers
 logger = logging.getLogger()
@@ -46,11 +48,15 @@ pocket_instance = Pocket(
 )
 
 
+# Timeout handler for API calls
+def timeout_handler(signum, frame):
+    raise TimeoutError("Pocket API call timed out")
+
+
 # Simulated Grok API response (replace with actual Grok API call)
 def generate_tags_with_grok(title, excerpt, url):
     """Simulate Grok API to generate tags based on article content."""
-    # This is a placeholder. In production, call the xAI Grok API with GROK_API_KEY.
-    # Example: Send title, excerpt, URL to Grok and parse response for tags.
+    # Placeholder. In production, call xAI Grok API with GROK_API_KEY.
     content = f"{title} {excerpt}".lower()
     general_tags = []
     specific_tag = ""
@@ -88,15 +94,19 @@ def fetch_articles_to_tag():
     logging.info("Fetching articles with fewer than 3 tags...")
     all_articles = {}
     offset = 0
-    count = 50
+    count = 20  # Reduced batch size
     retries = 5
 
     while True:
         for attempt in range(retries):
             try:
+                # Set timeout for API call
+                signal.signal(signal.SIGALRM, timeout_handler)
+                signal.alarm(10)  # 10-second timeout
                 response = pocket_instance.get(
                     count=count, offset=offset, detailType="complete", state="all"
                 )
+                signal.alarm(0)  # Disable timeout
                 logging.info(f"Raw API response (offset={offset}): {response}")
                 if not isinstance(response, tuple) or len(response) < 1:
                     logging.error(f"Invalid API response format: {response}")
@@ -126,10 +136,15 @@ def fetch_articles_to_tag():
                 logging.warning(f"Rate limit hit: {str(e)}. Retrying in {delay}s...")
                 print(f"Rate limit hit. Waiting {delay} seconds before retrying...")
                 time.sleep(delay)
+            except TimeoutError as e:
+                signal.alarm(0)
+                logging.error(f"Timeout at offset {offset}: {str(e)}")
+                raise
             except Exception as e:
                 delay = 5 * (attempt + 1)
                 logging.error(
-                    f"Pocket API error (attempt {attempt + 1}/{retries}, offset={offset}): {str(e)}"
+                    f"Pocket API error (attempt {attempt + 1}/{retries}, offset={offset}): {str(e)}",
+                    exc_info=True,
                 )
                 time.sleep(delay)
                 if "401" in str(e) or "403" in str(e):
@@ -222,45 +237,54 @@ def tag_articles(articles):
 
 
 def main():
-    logging.info("Script started")
-    logging.info(f"Consumer Key: {POCKET_CONSUMER_KEY[:10]}...")
-    logging.info(f"Access Token: {POCKET_ACCESS_TOKEN[:10]}...")
-
-    # Test Pocket API connectivity
     try:
-        test_response = pocket_instance.get(count=1, detailType="complete", state="all")
-        logging.info(f"Pocket API test response: {test_response}")
-        print("Pocket API connection successful.")
-    except pocket.RateLimitException as e:
-        logging.error(f"Rate limit exceeded: {str(e)}")
-        print(
-            "Pocket API rate limit exceeded. Please wait at least 1 hour (e.g., until after 2:16 PM on May 13, 2025) and try again."
-        )
-        return
-    except Exception as e:
-        logging.error(f"Pocket API connectivity test failed: {str(e)}")
-        print(f"Error connecting to Pocket API: {str(e)}.")
-        return
+        logging.info("Script started")
+        logging.info(f"Consumer Key: {POCKET_CONSUMER_KEY[:10]}...")
+        logging.info(f"Access Token: {POCKET_ACCESS_TOKEN[:10]}...")
 
-    # Fetch articles to tag
-    try:
-        articles = fetch_articles_to_tag()
-    except Exception as e:
-        logging.error(f"Failed to fetch articles: {str(e)}")
-        print(f"Error fetching articles: {str(e)}")
-        return
+        # Test Pocket API connectivity
+        try:
+            test_response = pocket_instance.get(
+                count=1, detailType="complete", state="all"
+            )
+            logging.info(f"Pocket API test response: {test_response}")
+            print("Pocket API connection successful.")
+        except pocket.RateLimitException as e:
+            logging.error(f"Rate limit exceeded: {str(e)}")
+            print(
+                "Pocket API rate limit exceeded. Please wait at least 1 hour and try again."
+            )
+            return
+        except Exception as e:
+            logging.error(f"Pocket API connectivity test failed: {str(e)}")
+            print(f"Error connecting to Pocket API: {str(e)}.")
+            return
 
-    if not articles:
-        logging.warning("No articles with fewer than 3 tags found.")
-        print("No articles need tagging. Verify your Pocket account at getpocket.com.")
-        return
+        # Fetch articles to tag
+        try:
+            articles = fetch_articles_to_tag()
+        except Exception as e:
+            logging.error(f"Failed to fetch articles: {str(e)}")
+            print(f"Error fetching articles: {str(e)}")
+            return
 
-    # Tag articles
-    tagged_count = tag_articles(articles)
-    print(f"Tagged {tagged_count} articles with at least 3 tags each.")
+        if not articles:
+            logging.warning("No articles with fewer than 3 tags found.")
+            print(
+                "No articles need tagging. Verify your Pocket account at getpocket.com."
+            )
+            return
 
-    logging.info("Script finished")
-    print("Script finished")
+        # Tag articles
+        tagged_count = tag_articles(articles)
+        print(f"Tagged {tagged_count} articles with at least 3 tags each.")
+
+        logging.info("Script finished")
+        print("Script finished")
+    except KeyboardInterrupt:
+        logging.info("Script interrupted by user")
+        print("Script stopped by user")
+        sys.exit(0)
 
 
 if __name__ == "__main__":
