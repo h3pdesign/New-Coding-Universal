@@ -1,0 +1,23 @@
+command: 'python "Coding Projects/Pocket Tagging/delete_single_article_tags.py"'
+command_workdir: '/Users/h3p/Coding/New-Coding-Universal'
+description: 'Run a Python script to clean up Pocket tags by deleting unwanted tags.'
+parameters: []
+timeout: '30'
+output_filter:
+  limit_lines: 400
+  limit_chars: 40000
+  valuable_top_or_bottom: top
+  grep: (?i)error
+  grep_context_lines: 5
+  remove_from_output: ''
+startup_wait_port: ''
+startup_wait: '10'
+startup_wait_keyword: ''
+available:
+  on_your_laptop: true
+  when_isolated: true
+confirmation:
+  ask_user:
+  - '*'
+  deny:
+  - sudo*

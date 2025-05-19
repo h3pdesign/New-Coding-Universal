@@ -2,10 +2,10 @@ import os
 import time
 import logging
 import sys
+import re
 from pocket import Pocket
 from dotenv import load_dotenv
 from collections import defaultdict
-import pocket
 
 # Configure logging with file and stderr handlers
 logger = logging.getLogger()
@@ -25,7 +25,6 @@ stream_handler.setFormatter(
 )
 logger.addHandler(stream_handler)
 
-# Test logging immediately
 logging.info("Logging initialized")
 
 # Load environment variables from specific .env file
@@ -48,12 +47,21 @@ pocket_instance = Pocket(
 )
 
 
-def fetch_all_articles():
+def is_useless_tag(tag):
+    """Determine if a tag is useless (e.g., random alphanumeric like '2qrn8z')."""
+    # Tag is useless if it's alphanumeric, 5+ characters, no spaces/special chars, and lacks vowels
+    return bool(
+        re.match(r"^[0-9a-z]{5,}$", tag, re.IGNORECASE)
+        and all(vowel not in tag.lower() for vowel in "aeiou")
+    )
+
+
+def fetch_all_articles():  # sourcery skip: low-code-quality
     """Fetch all articles and their tags from Pocket."""
     logging.info("Fetching all articles from Pocket...")
     all_articles = {}
     offset = 0
-    count = 50  # Increased for faster fetching
+    count = 50
     retries = 5
     total_expected_articles = None
 
@@ -72,11 +80,10 @@ def fetch_all_articles():
                 if not isinstance(articles, dict):
                     logging.error(f"Unexpected 'list' format: {articles}")
                     raise ValueError(f"Unexpected 'list' format: {articles}")
-                all_articles.update(articles)
+                all_articles |= articles
                 logging.info(
                     f"Fetched {len(articles)} articles at offset {offset}. Total: {len(all_articles)}"
                 )
-                # Check total expected articles from API response (if available)
                 if total_expected_articles is None and "total" in response_data:
                     total_expected_articles = response_data["total"]
                     logging.info(
@@ -114,57 +121,74 @@ def fetch_all_articles():
 
 
 def count_tags(articles):
-    """Count the number of articles per tag."""
+    """Count articles per tag and identify useless tags."""
     tag_counts = defaultdict(int)
     tag_to_articles = defaultdict(list)
+    useless_tags = set()
 
     for item_id, article in articles.items():
         tags = article.get("tags", {})
         for tag in tags.keys():
             tag_counts[tag] += 1
             tag_to_articles[tag].append(item_id)
+            if is_useless_tag(tag):
+                useless_tags.add(tag)
 
     logging.info(f"Found {len(tag_counts)} unique tags: {list(tag_counts.keys())}")
-    return tag_counts, tag_to_articles
+    logging.info(f"Found {len(useless_tags)} useless tags: {list(useless_tags)}")
+    return tag_counts, tag_to_articles, useless_tags
 
 
-def delete_single_article_tags(tag_counts, tag_to_articles):
-    """Delete tags that are associated with only one article."""
-    single_article_tags = [tag for tag, count in tag_counts.items() if count == 1]
+def delete_unwanted_tags(tag_counts, tag_to_articles, useless_tags):
+    """Delete tags that are associated with only one article or are useless."""
+    single_article_tags = [
+        tag
+        for tag, count in tag_counts.items()
+        if count == 1 and tag not in useless_tags
+    ]
+    unwanted_tags = single_article_tags + list(useless_tags)
     logging.info(
-        f"Found {len(single_article_tags)} tags with one article: {single_article_tags}"
+        f"Found {len(single_article_tags)} single-article tags: {single_article_tags}"
     )
+    logging.info(f"Found {len(useless_tags)} useless tags: {list(useless_tags)}")
+    logging.info(f"Total {len(unwanted_tags)} unwanted tags to delete: {unwanted_tags}")
 
     deleted_count = 0
     retries = 5
 
-    for tag in single_article_tags:
-        item_id = tag_to_articles[tag][0]
-        logging.info(f"Removing tag '{tag}' from article {item_id}")
-        for attempt in range(retries):
-            try:
-                pocket_instance.tags_remove(item_id, tag)
-                logging.info(f"Successfully removed tag '{tag}' from article {item_id}")
-                deleted_count += 1
-                time.sleep(3)
-                break
-            except pocket.RateLimitException as e:
-                delay = 120 * (attempt + 1)
-                logging.warning(f"Rate limit hit: {str(e)}. Retrying in {delay}s...")
-                print(f"Rate limit hit. Waiting {delay} seconds before retrying...")
-                time.sleep(delay)
-            except Exception as e:
-                logging.error(
-                    f"Error removing tag '{tag}' from article {item_id}: {str(e)}"
-                )
-                if "401" in str(e) or "403" in str(e):
-                    print(
-                        "Authentication or permission error. Regenerate POCKET_ACCESS_TOKEN with full permissions."
+    for tag in unwanted_tags:
+        is_useless = tag in useless_tags
+        for item_id in tag_to_articles[tag]:
+            tag_type = "useless" if is_useless else "single-article"
+            logging.info(f"Removing {tag_type} tag '{tag}' from article {item_id}")
+            for attempt in range(retries):
+                try:
+                    pocket_instance.tags_remove(item_id, tag)
+                    logging.info(
+                        f"Successfully removed {tag_type} tag '{tag}' from article {item_id}"
                     )
-                    raise
-                break
+                    deleted_count += 1
+                    time.sleep(3)
+                    break
+                except pocket.RateLimitException as e:
+                    delay = 120 * (attempt + 1)
+                    logging.warning(
+                        f"Rate limit hit: {str(e)}. Retrying in {delay}s..."
+                    )
+                    print(f"Rate limit hit. Waiting {delay} seconds before retrying...")
+                    time.sleep(delay)
+                except Exception as e:
+                    logging.error(
+                        f"Error removing {tag_type} tag '{tag}' from article {item_id}: {str(e)}"
+                    )
+                    if "401" in str(e) or "403" in str(e):
+                        print(
+                            "Authentication or permission error. Regenerate POCKET_ACCESS_TOKEN with full permissions."
+                        )
+                        raise
+                    break
 
-    logging.info(f"Deleted {deleted_count} tags with one article.")
+    logging.info(f"Deleted {deleted_count} unwanted tags (single-article or useless).")
     return deleted_count
 
 
@@ -181,7 +205,7 @@ def main():
     except pocket.RateLimitException as e:
         logging.error(f"Rate limit exceeded: {str(e)}")
         print(
-            "Pocket API rate limit exceeded. Please wait at least 1 hour (e.g., until after 12:49 PM on May 13, 2025) and try again."
+            "Pocket API rate limit exceeded. Please wait at least 1 hour (e.g., until after 2:00 PM on May 19, 2025) and try again."
         )
         print(
             "Alternatively, regenerate POCKET_ACCESS_TOKEN with full permissions using get_pocket_access_token.py."
@@ -215,8 +239,8 @@ def main():
         print("Check pocket_tag_cleanup.log for API response details.")
         return
 
-    # Count tags and identify single-article tags
-    tag_counts, tag_to_articles = count_tags(articles)
+    # Count tags and identify single-article and useless tags
+    tag_counts, tag_to_articles, useless_tags = count_tags(articles)
     if not tag_counts:
         logging.warning("No tags found in Pocket account.")
         print(
@@ -224,9 +248,9 @@ def main():
         )
         return
 
-    # Delete single-article tags
-    deleted_count = delete_single_article_tags(tag_counts, tag_to_articles)
-    print(f"Deleted {deleted_count} tags that were associated with only one article.")
+    # Delete unwanted tags
+    deleted_count = delete_unwanted_tags(tag_counts, tag_to_articles, useless_tags)
+    print(f"Deleted {deleted_count} unwanted tags (single-article or useless).")
 
     logging.info("Script finished")
     print("Script finished")
