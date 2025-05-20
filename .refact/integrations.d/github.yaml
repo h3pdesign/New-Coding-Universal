@@ -1,0 +1,11 @@
+gh_binary_path: ''
+gh_token: ''
+available:
+  on_your_laptop: true
+  when_isolated: true
+confirmation:
+  ask_user:
+  - gh * delete *
+  - gh * close *
+  deny:
+  - gh auth token *

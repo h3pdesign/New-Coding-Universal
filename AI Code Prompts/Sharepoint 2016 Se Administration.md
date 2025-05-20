@@ -10,9 +10,74 @@ Start by launching the **SharePoint Management Shell** as Administrator. This sh
 
 ```powershell
 New-SPConfigurationDatabase -DatabaseName "SP_Config" -DatabaseServer "SQLServerName" -AdministrationContentDatabaseName "SP_AdminContent" -Passphrase (ConvertTo-SecureString "YourPassphrase" -AsPlainText -Force) -FarmCredentials (Get-Credential)
+### 🔧 **1. Initial Setup with PowerShell**
+
+### 📝 **Full Deployment Script Template**
+
+Below is a PowerShell script template to automate the setup of SharePoint 2016 SE core services. Update placeholders (e.g., server names, service accounts) as needed:
+
+```powershell
+# Variables
+$DBServer = "SQLServerName"
+$FarmPassphrase = ConvertTo-SecureString "YourPassphrase" -AsPlainText -Force
+$FarmAccount = Get-Credential -Message "Enter Farm Account Credentials"
+$AppPoolAccount = Get-Credential -Message "Enter Service App Pool Account"
+
+# 1. Create Configuration Database and Central Admin
+New-SPConfigurationDatabase -DatabaseName "SP_Config" -DatabaseServer $DBServer -AdministrationContentDatabaseName "SP_AdminContent" -Passphrase $FarmPassphrase -FarmCredentials $FarmAccount
+Install-SPFarm -DatabaseServer $DBServer -DatabaseName "SP_Config" -Passphrase $FarmPassphrase -AdminContentDatabaseName "SP_AdminContent" -FarmCredentials $FarmAccount
+New-SPCentralAdministration -Port 2016 -WindowsAuthProvider "NTLM"
+
+# 2. Create Application Pool
+New-SPServiceApplicationPool -Name "SharePoint Service App Pool" -Account $AppPoolAccount
+
+# 3. Managed Metadata Service
+$mms = New-SPManagedMetadataServiceApplication -Name "Managed Metadata Service" -ApplicationPool "SharePoint Service App Pool" -DatabaseName "SP_MMS_DB"
+New-SPManagedMetadataServiceApplicationProxy -Name "Managed Metadata Service Proxy" -ServiceApplication $mms
+
+# 4. Search Service Application
+$search = New-SPEnterpriseSearchServiceApplication -Name "Search Service" -ApplicationPool "SharePoint Service App Pool" -DatabaseName "Search_DB"
+New-SPEnterpriseSearchServiceApplicationProxy -Name "Search Proxy" -ServiceApplication $search
+
+# 5. User Profile Service
+$ups = New-SPProfileServiceApplication -Name "User Profile Service" -ApplicationPool "SharePoint Service App Pool" -ProfileDBName "Profile_DB" -SocialDBName "Social_DB" -ProfileSyncDBName "Sync_DB"
+
+# 6. Secure Store Service
+$sss = New-SPSecureStoreServiceApplication -Name "Secure Store Service" -ApplicationPool "SharePoint Service App Pool" -DatabaseName "SecureStore_DB"
+New-SPSecureStoreServiceApplicationProxy -Name "Secure Store Proxy" -ServiceApplication $sss
+
+# 7. Office Online Server (OOS) Integration
+New-SPWOPIBinding -ServerName "oos.contoso.com"
+Set-SPWOPIZone -Zone "internal-http"
+
+# 8. IIS Configuration Example
+Import-Module WebAdministration
+Set-ItemProperty "IIS:\Sites\SharePoint - 80" -Name bindings -Value @{protocol="http";bindingInformation="*:80:"}
 ```
 
 ---
+
+### 🗺️ **Visual Architecture Diagram**
+
+Below is a conceptual diagram of the SharePoint 2016 SE environment and its integrations:
+
+```mermaid
+graph TD
+    A[SharePoint 2016 SE] --> B[SQL Server]
+    A --> C[Managed Metadata Service]
+    A --> D[Search Service]
+    A --> E[User Profile Service]
+    A --> F[Secure Store Service]
+    A --> G[Office Online Server]
+    A --> H[Power Automate (via Data Gateway)]
+    A --> I[IIS]
+    H -.->|Limited Triggers/Actions| A
+    G -->|WOPI Binding| A
+```
+
+> **Note:** Adjust the script and diagram to match your actual server names, accounts, and network topology.
+
+
 
 ### 🔄 **2. Power Automate Integration**
 
@@ -23,7 +88,7 @@ SharePoint 2016 is on-premises, so to use **Power Automate**, you need to:
 
 > Note: Only limited triggers/actions are available for on-prem SharePoint in Power Automate [3](https://answers.microsoft.com/en-us/msoffice/forum/all/connect-sharepoint-2016-with-powerapps-and-power/3b4ace2d-fda0-4c20-abb1-84b23dcfadf1).
 
----
+
 
 ### 🧠 **3. Managed Metadata Service (MMS)**
 
@@ -34,7 +99,7 @@ New-SPManagedMetadataServiceApplication -Name "Managed Metadata Service" -Applic
 New-SPManagedMetadataServiceApplicationProxy -Name "Managed Metadata Service Proxy" -ServiceApplication "Managed Metadata Service"
 ```
 
----
+
 
 ### 🔍 **4. Search Service Application**
 
@@ -43,7 +108,7 @@ New-SPEnterpriseSearchServiceApplication -Name "Search Service" -ApplicationPool
 New-SPEnterpriseSearchServiceApplicationProxy -Name "Search Proxy" -ServiceApplication "Search Service"
 ```
 
----
+
 
 ### 👤 **5. User Profile Service (UPS)**
 
@@ -57,7 +122,6 @@ UPS setup is more complex and includes:
 New-SPProfileServiceApplication -Name "User Profile Service" -ApplicationPool "SharePoint Service App Pool" -ProfileDBName "Profile_DB" -SocialDBName "Social_DB" -ProfileSyncDBName "Sync_DB"
 ```
 
----
 
 ### 📝 **6. Office Online Server (OOS) Integration**
 
@@ -69,7 +133,6 @@ New-SPWOPIBinding -ServerName "oos.contoso.com"
 Set-SPWOPIZone -Zone "internal-http"
 ```
 
----
 
 ### 🔐 **7. Secure Store Service**
 
@@ -78,7 +141,7 @@ New-SPSecureStoreServiceApplication -Name "Secure Store Service" -ApplicationPoo
 New-SPSecureStoreServiceApplicationProxy -Name "Secure Store Proxy" -ServiceApplication "Secure Store Service"
 ```
 
----
+
 
 ### 🌐 **8. IIS Configuration**
 
@@ -93,12 +156,13 @@ Set-ItemProperty "IIS:\Sites\SharePoint - 80" -Name bindings -Value @{protocol="
 
 ### ✅ **Next Steps**
 
-Would you like a **PowerShell script template** that automates the full setup of these services? I can generate one tailored to your environment (e.g., server names, service accounts, etc.).
+### 🌐 **8. Visual Architecture**
+
+![SharePoint 2016 SE Architecture](./SharePoint2016SE-Architecture.png)
+
+
 
 [1](https://learn.microsoft.com/en-us/sharepoint/sharepoint-powershell): <https://learn.microsoft.com/en-us/sharepoint/sharepoint-powershell>  
 [2](https://www.sphammad.com/abcd-of-powershell-automating-sharepoint-2016-installation/): <https://www.sphammad.com/abcd-of-powershell-automating-sharepoint-2016-installation/>  
 [3](https://answers.microsoft.com/en-us/msoffice/forum/all/connect-sharepoint-2016-with-powerapps-and-power/3b4ace2d-fda0-4c20-abb1-84b23dcfadf1): <https://answers.microsoft.com/en-us/msoffice/forum/all/connect-sharepoint-2016-with-powerapps-and-power/3b4ace2d-fda0-4c20-abb1-84b23dcfadf1>
 
----
-
-Would you like help creating a full deployment script or a visual architecture diagram for this setup?
