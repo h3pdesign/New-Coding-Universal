@@ -1,0 +1,7 @@
+Creating Search Head Cluster Nodes
+
+docker run --name splunk-sh01 -h splunk-sh01 -d -p 8005:8000 -e SPLUNK_START_ARGS=--accept-license -e SPLUNK_PASSWORD=password splunk/splunk:latest
+
+docker run --name splunk-sh02 -h splunk-sh02 -d -p 8006:8000 -e SPLUNK_START_ARGS=--accept-license -e SPLUNK_PASSWORD=password splunk/splunk:latest
+
+docker run --name splunk-deployer01 -h splunk-deployer01 -d -p 8007:8000 -e SPLUNK_START_ARGS=--accept-license -e SPLUNK_PASSWORD=password splunk/splunk:latest

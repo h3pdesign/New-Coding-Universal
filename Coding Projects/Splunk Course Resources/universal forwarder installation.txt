@@ -1,0 +1,9 @@
+wget -O splunkforwarder-7.2.0-8c86330ac18-linux-2.6-x86_64.rpm 'https://www.splunk.com/bin/splunk/DownloadActivityServlet?architecture=x86_64&platform=linux&version=7.2.0&product=universalforwarder&filename=splunkforwarder-7.2.0-8c86330ac18-linux-2.6-x86_64.rpm&wget=true'
+
+#./splunk list monitor
+#./splunk add monitor /var/log
+#./splunk add forward-server 172.17.0.2:9997
+
+./splunk set deploy-poll 172.17.0.2:8089
+
+

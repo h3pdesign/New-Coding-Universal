@@ -1,0 +1,9 @@
+Master Indexer:
+
+Creating the Indexer Cluster Nodes
+
+docker run --name splunk-midx01 -h splunk-midx01 -d -p 8000:8000 -e SPLUNK_START_ARGS=--accept-license -e SPLUNK_PASSWORD=password splunk/splunk:latest
+
+docker run --name splunk-idx01 -h splunk-idx01 -d -p 8001:8000 -e SPLUNK_START_ARGS=--accept-license -e SPLUNK_PASSWORD=password splunk/splunk:latest
+
+docker run --name splunk-idx02 -h splunk-idx02 -d -p 8002:8000 -e SPLUNK_START_ARGS=--accept-license -e SPLUNK_PASSWORD=password splunk/splunk:latest

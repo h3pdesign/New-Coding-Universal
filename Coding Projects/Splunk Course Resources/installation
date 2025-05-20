@@ -1,0 +1,7 @@
+docker pull splunk/splunk
+
+docker run --name splunk -d -p 8000:8000 -e SPLUNK_START_ARGS=--accept-license -e SPLUNK_PASSWORD=password splunk/splunk:latest
+
+wget -O splunk-7.2.0-8c86330ac18-linux-2.6-x86_64.rpm 'https://www.splunk.com/bin/splunk/DownloadActivityServlet?architecture=x86_64&platform=linux&version=7.2.0&product=splunk&filename=splunk-7.2.0-8c86330ac18-linux-2.6-x86_64.rpm&wget=true'
+
+https://splunkbase.splunk.com/develop/
