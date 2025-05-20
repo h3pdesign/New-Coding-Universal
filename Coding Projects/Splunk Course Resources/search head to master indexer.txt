@@ -1,0 +1,1 @@
+./splunk edit cluster-config -mode searchhead -master_uri https://172.17.0.2:8089 -secret password

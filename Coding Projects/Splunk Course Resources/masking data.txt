@@ -1,0 +1,8 @@
+inputs.conf
+
+[monitor:///tmp/accounts.log]
+sourcetype = SSN-CC-Anon
+
+props.conf
+[SSN-CC-Anon]
+SEDCMD-Anon = s/ssn=\d{5}(\d{4})/ssn=xxxxx\1/g s/cc=(\d{4}-){3}(\d{4})/cc=xxxx-xxxx-xxxx-\2/g

@@ -1,0 +1,7 @@
+
+docker run --name splunk-master -d -p 8000:8000 -e SPLUNK_START_ARGS=--accept-license -e SPLUNK_PASSWORD=password splunk/splunk:latest
+
+docker run --name splunk-slave01 -d -p 8001:8000 -e SPLUNK_START_ARGS=--accept-license -e SPLUNK_PASSWORD=password splunk/splunk:latest
+
+docker run --name splunk-slave02 -d -p 8002:8000 -e SPLUNK_START_ARGS=--accept-license -e SPLUNK_PASSWORD=password splunk/splunk:latest
+

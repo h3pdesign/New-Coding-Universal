@@ -1,0 +1,28 @@
+Deployer:
+
+server.conf
+
+[shclustering] 
+pass4SymmKey = YurPwd 
+shcluster_label = YurName
+
+All search heads:
+
+SH01:
+
+./splunk init shcluster-config -mgmt_uri https://172.17.0.5:8089 -replication_port 8080 -replication_factor 1 -shcluster_label sh_cluster -conf_deploy_fetch_url https://172.17.0.7 -secret password
+
+SH02:
+
+./splunk init shcluster-config -mgmt_uri https://172.17.0.6:8089 -replication_port 8080 -replication_factor 1 -shcluster_label sh_cluster -conf_deploy_fetch_url https://172.17.0.7 -secret password
+
+Search Head Cluster Captain
+
+./splunk bootstrap shcluster-captain -servers_list "https://172.17.0.5:8089","https://172.17.0.6:8089"
+
+
+SH01: 172.17.0.5
+SH02: 172.17.0.6
+Deplyoer: 172.17.0.7
+
+splunk edit cluster-config -mode searchhead -master_uri -secret

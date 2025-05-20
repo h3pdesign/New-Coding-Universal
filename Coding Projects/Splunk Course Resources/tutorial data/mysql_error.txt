@@ -1,0 +1,5 @@
+060516 22:38:54 [ERROR] Fatal error: Can't open privilege tables: Table 'mysql.host' doesn't exist
+120326 16:56:45 [ERROR] /usr/sbin/mysqld: Incorrect key file for table '/tmp/#sql_21b2_0.MYI'; try to repair it
+120326 16:56:45 [ERROR] Got an error from unknown thread, storage/myisam/mi_write.c:223
+120326 16:56:45 [ERROR] /usr/sbin/mysqld: Sort aborted: Error writing file '/tmp/MYK74Kpi' (Errcode: 28)
+
